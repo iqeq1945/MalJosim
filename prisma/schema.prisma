@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum Category {
+  PROFANITY
+  HATE_SPEECH
+  SEXUAL
+  VIOLENCE
+  SPAM
+  OTHER
+}
+
+enum HistoryAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+model BadWord {
+  id             String    @id @default(uuid())
+  word           String    @db.VarChar(100)
+  normalizedWord String    @db.VarChar(100)
+  severity       Severity  @default(MEDIUM)
+  category       Category  @default(OTHER)
+  isActive       Boolean   @default(true)
+  aliases        Json?     // string[] 형태로 저장
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relations
+  clientBadWords ClientBadWord[]
+
+  // Indexes
+  @@index([normalizedWord])
+  @@index([isActive])
+  @@index([category])
+  @@unique([word])
+}
+
+model ClientBadWord {
+  clientId         String    @db.VarChar(100)
+  wordId           String
+  overrideSeverity Severity?
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  // Relations
+  badWord BadWord @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  // Composite Primary Key
+  @@id([clientId, wordId])
+  @@index([clientId])
+  @@index([wordId])
+}
+
+model History {
+  id        String       @id @default(uuid())
+  tableName String       @db.VarChar(50)
+  recordId  String
+  action    HistoryAction
+  userId    String?      @db.VarChar(100)
+  createdAt DateTime     @default(now())
+
+  @@index([tableName, recordId])
+  @@index([createdAt])
+}
+
