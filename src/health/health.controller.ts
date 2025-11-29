@@ -1,5 +1,6 @@
 import { Controller, Get, HttpException, HttpStatus } from "@nestjs/common";
 import { HealthService } from "./health.service";
+import { HealthResponseDto } from "./dto/health-response.dto";
 
 @Controller("health")
 export class HealthController {
@@ -11,20 +12,16 @@ export class HealthController {
    * - 실패: 503 Service Unavailable 반환
    */
   @Get("")
-  async checkHealth() {
+  async checkHealth(): Promise<HealthResponseDto> {
     try {
       await this.healthService.checkService();
-      return {
-        status: "ok",
-        service: "up",
-      };
+      return HealthResponseDto.success({ service: "up" });
     } catch (error) {
       throw new HttpException(
-        {
-          status: "error",
-          service: "down",
-          message: "Service health check failed",
-        },
+        HealthResponseDto.error(
+          { service: "down" },
+          "Service health check failed"
+        ),
         HttpStatus.SERVICE_UNAVAILABLE
       );
     }
@@ -36,20 +33,13 @@ export class HealthController {
    * - 실패: 503 Service Unavailable 반환
    */
   @Get("db")
-  async checkDb() {
+  async checkDb(): Promise<HealthResponseDto> {
     try {
       await this.healthService.checkDatabase();
-      return {
-        status: "ok",
-        db: "up",
-      };
+      return HealthResponseDto.success({ db: "up" });
     } catch (error) {
       throw new HttpException(
-        {
-          status: "error",
-          db: "down",
-          message: "Database health check failed",
-        },
+        HealthResponseDto.error({ db: "down" }, "Database health check failed"),
         HttpStatus.SERVICE_UNAVAILABLE
       );
     }
