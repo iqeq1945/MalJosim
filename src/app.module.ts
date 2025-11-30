@@ -1,19 +1,26 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { DatabaseModule } from './database/database.module';
-import { HealthModule } from './health/health.module';
+import { Module } from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
+import { DatabaseModule } from "./database/database.module";
+import { CacheModule } from "./cache/cache.module";
+import { HealthModule } from "./health/health.module";
+import { BadWordModule } from "./bad-word/bad-word.module";
+import { FilterModule } from "./filter/filter.module";
+import { AIModule } from "./ai/ai.module";
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: ".env",
     }),
     DatabaseModule,
+    CacheModule,
     HealthModule,
+    BadWordModule,
+    AIModule,
+    FilterModule,
   ],
   controllers: [],
   providers: [],
 })
 export class AppModule {}
-
