@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { DatabaseModule } from "./database/database.module";
+import { CacheModule } from "./cache/cache.module";
 import { HealthModule } from "./health/health.module";
 import { BadWordModule } from "./bad-word/bad-word.module";
 
@@ -11,6 +12,7 @@ import { BadWordModule } from "./bad-word/bad-word.module";
       envFilePath: ".env",
     }),
     DatabaseModule,
+    CacheModule,
     HealthModule,
     BadWordModule,
   ],

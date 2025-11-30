@@ -4,6 +4,7 @@ import {
   ConflictException,
 } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
+import { CacheService } from "../cache/cache.service";
 import { CreateBadWordDto } from "./dto/create-bad-word.dto";
 import { UpdateBadWordDto } from "./dto/update-bad-word.dto";
 import { QueryBadWordDto } from "./dto/query-bad-word.dto";
@@ -11,11 +12,13 @@ import {
   BadWordResponseDto,
   BadWordListResponseDto,
 } from "./dto/bad-word-response.dto";
-import { Prisma } from "@prisma/client";
 
 @Injectable()
 export class BadWordService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cacheService: CacheService
+  ) {}
 
   async create(dto: CreateBadWordDto): Promise<BadWordResponseDto> {
     // 중복 체크 (word는 unique)
@@ -31,6 +34,16 @@ export class BadWordService {
 
     const badWord = await this.prisma.badWord.create({
       data: dto.buildCreateData(),
+    });
+
+    // Write-through: Redis 캐시 업데이트
+    await this.cacheService.addBadWord({
+      id: badWord.id,
+      word: badWord.word,
+      normalizedWord: badWord.normalizedWord,
+      severity: badWord.severity,
+      category: badWord.category,
+      isActive: badWord.isActive,
     });
 
     return BadWordResponseDto.from(badWord);
@@ -100,13 +113,29 @@ export class BadWordService {
       data: dto.buildUpdateData(),
     });
 
+    // Write-through: Redis 캐시 업데이트
+    await this.cacheService.updateBadWord({
+      id: updated.id,
+      word: updated.word,
+      normalizedWord: updated.normalizedWord,
+      severity: updated.severity,
+      category: updated.category,
+      isActive: updated.isActive,
+    });
+
     return BadWordResponseDto.from(updated);
   }
 
   // 비활성화 soft delete
   async remove(id: string): Promise<void> {
     // 존재 여부 확인
-    await this.findOne(id);
+    const badWord = await this.prisma.badWord.findUnique({
+      where: { id },
+    });
+
+    if (!badWord) {
+      throw new NotFoundException(`Bad word with ID "${id}" not found`);
+    }
 
     await this.prisma.badWord.update({
       where: { id },
@@ -114,5 +143,8 @@ export class BadWordService {
         isActive: false,
       },
     });
+
+    // Write-through: Redis 캐시에서 제거
+    await this.cacheService.removeBadWord(badWord.id, badWord.normalizedWord);
   }
 }

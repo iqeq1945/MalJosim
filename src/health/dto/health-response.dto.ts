@@ -9,6 +9,7 @@ export class HealthResponseDto {
   checks: {
     service?: "up" | "down";
     db?: "up" | "down";
+    redis?: "up" | "down";
     [key: string]: "up" | "down" | undefined;
   };
   message?: string;
@@ -18,6 +19,7 @@ export class HealthResponseDto {
     checks: {
       service?: "up" | "down";
       db?: "up" | "down";
+      redis?: "up" | "down";
       [key: string]: "up" | "down" | undefined;
     },
     message?: string
@@ -36,6 +38,7 @@ export class HealthResponseDto {
   static success(checks: {
     service?: "up" | "down";
     db?: "up" | "down";
+    redis?: "up" | "down";
     [key: string]: "up" | "down" | undefined;
   }): HealthResponseDto {
     return new HealthResponseDto("ok", checks);
@@ -48,6 +51,7 @@ export class HealthResponseDto {
     checks: {
       service?: "up" | "down";
       db?: "up" | "down";
+      redis?: "up" | "down";
       [key: string]: "up" | "down" | undefined;
     },
     message: string

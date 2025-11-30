@@ -45,7 +45,7 @@ export class UpdateBadWordDto {
       ...(this.normalizedWord && { normalizedWord: this.normalizedWord }),
       ...(this.severity && { severity: this.severity }),
       ...(this.category && { category: this.category }),
-      ...(this.aliases !== undefined && { aliases: this.aliases }),
+      ...(this.aliases !== undefined && { aliases: this.aliases ?? [] }),
       ...(this.isActive !== undefined && { isActive: this.isActive }),
     };
   }

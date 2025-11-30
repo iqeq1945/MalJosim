@@ -43,7 +43,7 @@ export class CreateBadWordDto {
       normalizedWord: this.normalizedWord,
       severity: this.severity ?? Severity.MEDIUM,
       category: this.category ?? Category.OTHER,
-      aliases: this.aliases ?? null,
+      aliases: this.aliases ?? [],
       isActive: this.isActive ?? true,
     };
   }
