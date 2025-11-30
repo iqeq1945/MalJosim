@@ -10,7 +10,6 @@ export interface EvasionPattern {
   hasRepetition: boolean; // 반복 문자 (예: 시발발발)
   hasJamoSeparation: boolean; // 자모 분리 (예: ㅅㅣ발)
   hasZeroWidth: boolean; // Zero-width 문자 사용
-  hasMixedScript: boolean; // 한글/영문/숫자 혼용
   hasSpaceSeparation: boolean; // 공백 분리 (예: 시 발 개 새 끼)
   suspiciousScore: number; // 의심도 점수 (0-1)
   detectedPatterns: string[]; // 감지된 패턴 목록
@@ -24,7 +23,6 @@ export enum PATTERNS {
   REPETITION = "repetition",
   JAMO_SEPARATION = "jamo_separation",
   ZERO_WIDTH = "zero_width",
-  MIXED_SCRIPT = "mixed_script",
   SPACE_SEPARATION = "space_separation",
 }
 
@@ -55,7 +53,7 @@ export class EvasionAnalyzer {
     const hasLeetspeak = EvasionDetectors.detectLeetspeak(text);
     if (hasLeetspeak) {
       patterns.push(PATTERNS.LEETSPEAK);
-      suspiciousScore += 0.4;
+      suspiciousScore += 0.3;
     }
 
     // 2. 반복 문자 감지
@@ -69,7 +67,7 @@ export class EvasionAnalyzer {
     const hasJamoSeparation = EvasionDetectors.detectJamoSeparation(text);
     if (hasJamoSeparation) {
       patterns.push(PATTERNS.JAMO_SEPARATION);
-      suspiciousScore += 0.3;
+      suspiciousScore += 0.25;
     }
 
     // 4. Zero-width 문자 감지
@@ -79,14 +77,7 @@ export class EvasionAnalyzer {
       suspiciousScore += 0.3;
     }
 
-    // 5. 한글/영문/숫자 혼용 감지
-    const hasMixedScript = EvasionDetectors.detectMixedScript(text);
-    if (hasMixedScript) {
-      patterns.push(PATTERNS.MIXED_SCRIPT);
-      suspiciousScore += 0.2;
-    }
-
-    // 6. 공백 분리 패턴 감지
+    // 5. 공백 분리 패턴 감지
     const hasSpaceSeparation = EvasionDetectors.detectSpaceSeparation(text);
     if (hasSpaceSeparation) {
       patterns.push(PATTERNS.SPACE_SEPARATION);
@@ -101,7 +92,6 @@ export class EvasionAnalyzer {
       hasRepetition,
       hasJamoSeparation,
       hasZeroWidth,
-      hasMixedScript,
       hasSpaceSeparation,
       suspiciousScore,
       detectedPatterns: patterns,
@@ -117,7 +107,6 @@ export class EvasionAnalyzer {
       hasRepetition: false,
       hasJamoSeparation: false,
       hasZeroWidth: false,
-      hasMixedScript: false,
       hasSpaceSeparation: false,
       suspiciousScore: 0,
       detectedPatterns: [],

@@ -39,7 +39,7 @@ export class LLMService {
       hasRepetition: boolean;
       hasJamoSeparation: boolean;
       hasZeroWidth: boolean;
-      hasMixedScript: boolean;
+      hasSpaceSeparation: boolean;
       suspiciousScore: number;
     }
   ): Promise<string[]> {
@@ -76,8 +76,8 @@ export class LLMService {
         if (evasionPatterns.hasZeroWidth) {
           userPrompt += "- Zero-width 문자 감지\n";
         }
-        if (evasionPatterns.hasMixedScript) {
-          userPrompt += "- 한글/영문/숫자 혼용 감지\n";
+        if (evasionPatterns.hasSpaceSeparation) {
+          userPrompt += "- 공백 분리 감지\n";
         }
       }
 
