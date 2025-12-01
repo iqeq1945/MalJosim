@@ -3,7 +3,6 @@ import {
   IsEnum,
   IsOptional,
   IsBoolean,
-  IsArray,
   MaxLength,
 } from "class-validator";
 import { Severity, Category, Prisma } from "@prisma/client";
@@ -28,11 +27,6 @@ export class CreateBadWordDto {
   @IsOptional()
   category?: Category = Category.OTHER;
 
-  @IsArray()
-  @IsString({ each: true })
-  @IsOptional()
-  aliases?: string[];
-
   @IsBoolean()
   @IsOptional()
   isActive?: boolean = true;
@@ -43,7 +37,6 @@ export class CreateBadWordDto {
       normalizedWord: this.normalizedWord,
       severity: this.severity ?? Severity.MEDIUM,
       category: this.category ?? Category.OTHER,
-      aliases: this.aliases ?? [],
       isActive: this.isActive ?? true,
     };
   }

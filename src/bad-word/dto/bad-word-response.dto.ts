@@ -16,8 +16,6 @@ export class BadWordResponseDto {
 
   isActive: boolean;
 
-  aliases: string[];
-
   createdAt: Date;
 
   updatedAt: Date;
@@ -29,7 +27,6 @@ export class BadWordResponseDto {
     severity: Severity;
     category: Category;
     isActive: boolean;
-    aliases: string[];
     createdAt: Date;
     updatedAt: Date;
   }) {
@@ -39,7 +36,6 @@ export class BadWordResponseDto {
     this.severity = data.severity;
     this.category = data.category;
     this.isActive = data.isActive;
-    this.aliases = data.aliases;
     this.createdAt = data.createdAt;
     this.updatedAt = data.updatedAt;
   }
@@ -54,7 +50,6 @@ export class BadWordResponseDto {
     severity: Severity;
     category: Category;
     isActive: boolean;
-    aliases: string[];
     createdAt: Date;
     updatedAt: Date;
   }): BadWordResponseDto {
@@ -65,7 +60,6 @@ export class BadWordResponseDto {
       severity: badWord.severity,
       category: badWord.category,
       isActive: badWord.isActive,
-      aliases: badWord.aliases,
       createdAt: badWord.createdAt,
       updatedAt: badWord.updatedAt,
     });
