@@ -24,17 +24,16 @@
 
 - **컬럼 설명**
 
-| 컬럼명         | 타입        | 설명 |
-|----------------|------------|------|
-| `id`           | `String` (UUID) | 금칙어 고유 ID (PK) |
-| `word`         | `String`       | 원본 금칙어 문자열 (예: `씨발`) |
-| `normalizedWord` | `String`     | 정규화 후 대표 형태 (자모 합치기, leetspeak 변환, 반복 축소 등 적용) |
-| `severity`     | `Severity` (enum) | 욕설 강도 레벨 (`LOW` / `MEDIUM` / `HIGH` / `CRITICAL`) |
-| `category`     | `Category` (enum) | 표현 종류 (`PROFANITY`, `HATE_SPEECH`, `SEXUAL`, `VIOLENCE`, `SPAM`, `OTHER`) |
-| `isActive`     | `Boolean`       | 현재 필터링에서 사용할지 여부 (소프트 삭제/비활성화 플래그) |
-| `aliases`      | `Json?`         | 해당 단어의 별칭/변형 리스트 (예: `["씨8", "cibal", "ssibal"]`) |
-| `createdAt`    | `DateTime`      | 레코드 생성 시각 |
-| `updatedAt`    | `DateTime`      | 레코드 최종 수정 시각 (자동 업데이트) |
+| 컬럼명           | 타입              | 설명                                                                          |
+| ---------------- | ----------------- | ----------------------------------------------------------------------------- |
+| `id`             | `String` (UUID)   | 금칙어 고유 ID (PK)                                                           |
+| `word`           | `String`          | 원본 금칙어 문자열 (예: `씨발`)                                               |
+| `normalizedWord` | `String`          | 정규화 후 대표 형태 (자모 합치기, leetspeak 변환, 반복 축소 등 적용)          |
+| `severity`       | `Severity` (enum) | 욕설 강도 레벨 (`LOW` / `MEDIUM` / `HIGH` / `CRITICAL`)                       |
+| `category`       | `Category` (enum) | 표현 종류 (`PROFANITY`, `HATE_SPEECH`, `SEXUAL`, `VIOLENCE`, `SPAM`, `OTHER`) |
+| `isActive`       | `Boolean`         | 현재 필터링에서 사용할지 여부 (소프트 삭제/비활성화 플래그)                   |
+| `createdAt`      | `DateTime`        | 레코드 생성 시각                                                              |
+| `updatedAt`      | `DateTime`        | 레코드 최종 수정 시각 (자동 업데이트)                                         |
 
 - **인덱스 및 제약 조건**
   - `@@unique([word])` : 동일한 원본 단어 중복 저장 방지
@@ -52,14 +51,14 @@
 
 - **컬럼 설명**
 
-| 컬럼명            | 타입              | 설명 |
-|-------------------|------------------|------|
-| `clientId`        | `String`         | 클라이언트 식별자 (예: 테넌트 ID, 고객사 ID) |
-| `wordId`          | `String`         | `BadWord.id` FK (어떤 금칙어를 오버라이드 하는지) |
-| `overrideSeverity`| `Severity?`      | 클라이언트 기준 재정의된 심각도 (없으면 글로벌 `severity` 사용) |
-| `isActive`        | `Boolean`        | 해당 클라이언트에서 이 단어를 사용할지 여부 |
-| `createdAt`       | `DateTime`       | 레코드 생성 시각 |
-| `updatedAt`       | `DateTime`       | 레코드 최종 수정 시각 |
+| 컬럼명             | 타입        | 설명                                                            |
+| ------------------ | ----------- | --------------------------------------------------------------- |
+| `clientId`         | `String`    | 클라이언트 식별자 (예: 테넌트 ID, 고객사 ID)                    |
+| `wordId`           | `String`    | `BadWord.id` FK (어떤 금칙어를 오버라이드 하는지)               |
+| `overrideSeverity` | `Severity?` | 클라이언트 기준 재정의된 심각도 (없으면 글로벌 `severity` 사용) |
+| `isActive`         | `Boolean`   | 해당 클라이언트에서 이 단어를 사용할지 여부                     |
+| `createdAt`        | `DateTime`  | 레코드 생성 시각                                                |
+| `updatedAt`        | `DateTime`  | 레코드 최종 수정 시각                                           |
 
 - **관계 및 인덱스**
   - `badWord BadWord @relation(fields: [wordId], references: [id], onDelete: Cascade)`
@@ -77,14 +76,14 @@
 
 - **컬럼 설명**
 
-| 컬럼명      | 타입         | 설명 |
-|-------------|-------------|------|
-| `id`        | `String` (UUID) | 로그 고유 ID |
-| `tableName` | `String`    | 변경된 테이블 이름 (예: `"BadWord"`, `"ClientBadWord"`) |
-| `recordId`  | `String`    | 변경 대상 레코드의 ID (`BadWord.id` 또는 `clientId+wordId` 등) |
-| `action`    | `HistoryAction` (enum) | `CREATE` / `UPDATE` / `DELETE` |
-| `userId`    | `String?`   | 변경을 수행한 사용자/시스템 ID |
-| `createdAt` | `DateTime`  | 로그 생성 시각 |
+| 컬럼명      | 타입                   | 설명                                                           |
+| ----------- | ---------------------- | -------------------------------------------------------------- |
+| `id`        | `String` (UUID)        | 로그 고유 ID                                                   |
+| `tableName` | `String`               | 변경된 테이블 이름 (예: `"BadWord"`, `"ClientBadWord"`)        |
+| `recordId`  | `String`               | 변경 대상 레코드의 ID (`BadWord.id` 또는 `clientId+wordId` 등) |
+| `action`    | `HistoryAction` (enum) | `CREATE` / `UPDATE` / `DELETE`                                 |
+| `userId`    | `String?`              | 변경을 수행한 사용자/시스템 ID                                 |
+| `createdAt` | `DateTime`             | 로그 생성 시각                                                 |
 
 - **인덱스**
   - `@@index([tableName, recordId])` : 특정 레코드 변경 이력 조회용
@@ -135,5 +134,3 @@
   3. **이 문서에도 변경 이유와 필드 설명을 업데이트**
 
 이 흐름을 지키면, MalJosim의 데이터 모델이 장기적으로도 깨끗하게 유지될 수 있습니다.
-
-

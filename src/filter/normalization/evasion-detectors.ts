@@ -72,24 +72,6 @@ export class EvasionDetectors {
   }
 
   /**
-   * 혼용 스크립트 패턴 감지
-   * 한글/영문/숫자가 혼용된 경우를 감지
-   *
-   * @param text 분석할 텍스트
-   * @returns 혼용 스크립트 패턴이 있는지 여부
-   */
-  static detectMixedScript(text: string): boolean {
-    if (!text) return false;
-
-    const hasKorean = /[가-힣]/.test(text);
-    const hasEnglish = /[a-zA-Z]/.test(text);
-    const hasNumber = /[0-9]/.test(text);
-
-    // 한글과 영문/숫자가 함께 있는 경우
-    return hasKorean && (hasEnglish || hasNumber);
-  }
-
-  /**
    * 공백 분리 패턴 감지
    * 의도적으로 공백을 넣어 필터링을 회피하는 패턴을 감지
    * 예: "시 발", "시 발 개 새 끼"

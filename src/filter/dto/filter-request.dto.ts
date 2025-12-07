@@ -11,5 +11,5 @@ export class FilterRequestDto {
   @IsOptional()
   @IsString()
   @MaxLength(100)
-  clientId?: string; // 클라이언트 ID (선택적, 클라이언트별 필터링용)
+  clientId?: string; // 클라이언트 ID (선택적, 현재는 사용하지 않음)
 }

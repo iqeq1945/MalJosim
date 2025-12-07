@@ -3,19 +3,11 @@
  */
 export class CacheKeys {
   /**
-   * 글로벌 활성 금칙어 목록 (Set)
+   * 활성 금칙어 목록 (Set)
    * bad_words:global
    */
   static globalBadWords(): string {
     return "bad_words:global";
-  }
-
-  /**
-   * 클라이언트별 금칙어 목록 (Set)
-   * bad_words:client:{clientId}
-   */
-  static clientBadWords(clientId: string): string {
-    return `bad_words:client:${clientId}`;
   }
 
   /**

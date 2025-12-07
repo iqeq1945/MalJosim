@@ -80,7 +80,7 @@ npm run start:prod
 
 ### 주요 특징
 
-- ⚡ **Fast Path First**: Redis 사전 매칭으로 대부분의 케이스를 빠르게 처리
+- ⚡ **Fast Path First**: Trie 기반 매칭으로 대부분의 케이스를 빠르게 처리
 - 🎯 **높은 정확도**: 부분 매칭 구분 및 회피 패턴 감지로 False Positive/False Negative 최소화
 - 🔄 **실시간 필터링**: Redis 캐싱으로 빠른 응답 속도
 - 🤖 **AI/RAG 통합**: OpenAI GPT-4o-mini + ChromaDB를 활용한 고급 분석
@@ -99,9 +99,9 @@ npm run start:prod
     ↓
 [2] 텍스트 정규화
     ↓
-[3] 토큰화 및 후보 추출 (Sliding Window)
+[3] 토큰화
     ↓
-[4] Fast Path: Redis 사전 매칭
+[4] Fast Path: Trie 기반 매칭
     ├─ 전체 단어 매칭 발견 → 심각도 높으면 즉시 차단 ✅
     └─ 부분 매칭만 발견 → AI 호출
     ↓
@@ -142,9 +142,15 @@ npm run start:prod
 
 "시발점" 같은 False Positive를 방지하기 위해 전체 매칭과 부분 매칭을 구분합니다.
 
-- **전체 매칭**: 토큰에 정확히 일치 (예: "시발")
-- **부분 매칭**: Sliding Window에서 추출된 부분 문자열 (예: "시발점" → "시발")
+- **전체 매칭**: 매칭된 단어의 위치가 토큰의 경계와 정확히 일치 (예: "시발")
+- **부분 매칭**: 매칭된 단어가 토큰의 일부인 경우 (예: "시발점" → "시발")
 - 부분 매칭은 가중치 50% 감소
+
+### 3. Trie 기반 고성능 매칭
+
+- **Trie 데이터 구조**: 메모리 기반 금칙어 트리로 O(n) 시간 복잡도
+- **네트워크 I/O 제로**: Redis 조회 없이 메모리에서 직접 매칭
+- **스마트 로드**: 서버 시작 시 Redis에 데이터가 있으면 Redis → Trie, 없으면 PostgreSQL → Redis + Trie
 
 ### 3. 멀티 테넌트 지원
 
@@ -337,7 +343,7 @@ npm run test:cov
 
 ### Fast Path First 전략
 
-- **95-98% AI 호출 감소**: 대부분의 케이스를 Redis 사전 매칭으로 처리
+- **95-98% AI 호출 감소**: 대부분의 케이스를 Trie 기반 매칭으로 처리
 - **평균 응답 시간**: Fast Path < 10ms, Slow Path < 500ms
 
 ### 캐싱 전략

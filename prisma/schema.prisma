@@ -35,7 +35,6 @@ model BadWord {
   severity       Severity  @default(MEDIUM)
   category       Category  @default(OTHER)
   isActive       Boolean   @default(true)
-  aliases        String[]  @default([])
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 

@@ -1,8 +1,8 @@
-import { Injectable, Optional } from "@nestjs/common";
+import { Injectable, Optional, Logger } from "@nestjs/common";
 import { NormalizationService } from "./normalization/normalization.service";
 import { TokenizationService } from "./tokenization/tokenization.service";
-import { CacheService } from "../cache/cache.service";
-import { RAGService } from "../ai/rag.service";
+import { TrieService } from "./trie/trie.service";
+import { LLMService } from "../ai/llm.service";
 import { FilterRequestDto } from "./dto/filter-request.dto";
 import {
   FilterResponseDto,
@@ -15,22 +15,24 @@ import { Severity } from "@prisma/client";
  * 필터링 서비스
  *
  * 텍스트를 분석하고 금칙어를 감지하여 필터링 결과를 반환합니다.
- * Normalization + AI (RAG) + Tokenization + Cache 매칭 파이프라인을 통합합니다.
+ * Normalization + Trie 기반 매칭 + LLM 문맥 판단 파이프라인을 통합합니다.
  */
 @Injectable()
 export class FilterService {
+  private readonly logger = new Logger(FilterService.name);
+
   constructor(
     private readonly normalizationService: NormalizationService,
     private readonly tokenizationService: TokenizationService,
-    private readonly cacheService: CacheService,
-    @Optional() private readonly ragService?: RAGService
+    private readonly trieService: TrieService,
+    @Optional() private readonly llmService?: LLMService
   ) {}
 
   /**
    * 텍스트를 필터링합니다.
    *
    * Fast Path First 전략:
-   * 1. Fast Path: Tokenization + Redis 매칭 (무료, 빠름)
+   * 1. Fast Path: Trie 기반 매칭 (무료, 빠름)
    * 2. Fast Path에서 높은 심각도 매칭 시 즉시 차단
    * 3. Slow Path: 회피 패턴이 있거나 매칭이 없으면 AI 호출 (비용 발생)
    *
@@ -38,7 +40,8 @@ export class FilterService {
    * @returns 필터링 결과
    */
   async filter(dto: FilterRequestDto): Promise<FilterResponseDto> {
-    const { text, clientId } = dto;
+    const { text } = dto;
+    // clientId는 요청에는 있지만 현재는 사용하지 않음
 
     if (!text || text.trim().length === 0) {
       return FilterResponseDto.allow(text || "");
@@ -54,14 +57,10 @@ export class FilterService {
     // 3. 정규화된 텍스트에서 토큰 추출 (전체 단어 매칭 구분용)
     const normalizedTokens = this.tokenizationService.tokenize(normalizedText);
 
-    // 4. Fast Path: 정규화된 텍스트에서 후보 추출
-    const fastCandidates =
-      this.tokenizationService.extractCandidates(normalizedText);
-
-    const fastMatches = await this.checkDictionary(
-      fastCandidates,
-      normalizedTokens, // 토큰 목록 전달 (부분 매칭 구분용)
-      clientId
+    // 4. Fast Path: Trie 기반 매칭 (항상 사용)
+    const fastMatches = this.checkDictionaryWithTrie(
+      normalizedText,
+      normalizedTokens
     );
 
     // 4. 전체 단어 매칭과 부분 매칭 분리
@@ -88,32 +87,41 @@ export class FilterService {
       (partialMatches.length > 0 && fullMatches.length === 0); // 부분 매칭만 있으면 AI로 맥락 판단
 
     let allMatches = [...fastMatches];
+    let enhancedSuspiciousScore = suspiciousScore;
 
-    if (shouldCallAI && this.ragService) {
+    if (shouldCallAI && this.llmService) {
       try {
-        // AI로 후보 추출 및 정규화
-        const aiCandidates = await this.ragService.extractCandidates(text);
-        const normalizedAiCandidates =
-          this.normalizationService.normalizeBatch(aiCandidates);
-
-        // AI가 추출한 후보들도 Redis에서 매칭 확인
-        const aiMatches = await this.checkDictionary(
-          normalizedAiCandidates,
-          normalizedTokens,
-          clientId
+        // AI가 문맥 기반으로 욕설 여부 판단
+        const aiJudgment = await this.llmService.judgeProfanity(
+          analysis.original,
+          analysis.evasionPatterns
         );
 
-        // Fast Path와 AI 결과 통합 (중복 제거)
-        allMatches = this.mergeMatches(fastMatches, aiMatches);
+        if (aiJudgment.isProfanity) {
+          // AI가 욕설로 판단한 경우 confidence를 suspiciousScore에 반영
+          enhancedSuspiciousScore = Math.max(
+            suspiciousScore,
+            aiJudgment.confidence
+          );
+          this.logger.debug(
+            `AI judgment: isProfanity=${aiJudgment.isProfanity}, confidence=${aiJudgment.confidence}, reason=${aiJudgment.reason}`
+          );
+        }
       } catch (error) {
         // AI 실패 시 Fast Path 결과만 사용
-        // 에러 로깅은 RAG Service에서 처리됨
+        this.logger.warn(
+          "AI judgment failed, using Fast Path result only:",
+          error
+        );
       }
     }
 
     // 7. 점수 계산 및 최종 판정
     const dictionaryScore = this.calculateDictionaryScore(allMatches);
-    const status = this.determineStatus(dictionaryScore, suspiciousScore);
+    const status = this.determineStatus(
+      dictionaryScore,
+      enhancedSuspiciousScore
+    );
 
     // 8. 결과 반환
     return this.createResponse(
@@ -121,29 +129,8 @@ export class FilterService {
       text,
       allMatches,
       dictionaryScore,
-      suspiciousScore
+      enhancedSuspiciousScore
     );
-  }
-
-  /**
-   * 두 매칭 결과를 통합합니다 (중복 제거).
-   *
-   * @param matches1 첫 번째 매칭 결과
-   * @param matches2 두 번째 매칭 결과
-   * @returns 통합된 매칭 결과 (중복 제거)
-   */
-  private mergeMatches(
-    matches1: MatchedBadWord[],
-    matches2: MatchedBadWord[]
-  ): MatchedBadWord[] {
-    const merged = new Map<string, MatchedBadWord>();
-    [...matches1, ...matches2].forEach((match) => {
-      const key = match.normalizedWord;
-      if (!merged.has(key)) {
-        merged.set(key, match);
-      }
-    });
-    return Array.from(merged.values());
   }
 
   /**
@@ -184,59 +171,131 @@ export class FilterService {
   }
 
   /**
-   * 후보 단어들을 Redis에서 매칭 확인합니다.
+   * Trie를 사용하여 텍스트에서 매칭된 금칙어를 찾습니다.
    *
-   * @param normalizedCandidates 정규화된 후보 단어 배열
+   * @param normalizedText 정규화된 텍스트
    * @param normalizedTokens 정규화된 토큰 배열 (전체 단어 매칭 구분용)
-   * @param clientId 클라이언트 ID (선택적)
    * @returns 매칭된 금칙어 목록 (부분 매칭 여부 포함)
    */
-  private async checkDictionary(
-    normalizedCandidates: string[],
-    normalizedTokens: string[],
-    clientId?: string
-  ): Promise<MatchedBadWord[]> {
-    if (normalizedCandidates.length === 0) {
-      return [];
-    }
+  private checkDictionaryWithTrie(
+    normalizedText: string,
+    normalizedTokens: string[]
+  ): MatchedBadWord[] {
+    // Trie에서 모든 매칭 찾기 (위치 정보 포함)
+    const trieMatches = this.trieService.findAllMatches(normalizedText);
+
+    // 토큰의 위치 정보 계산 (부분 매칭 판단용)
+    const tokenPositions = this.calculateTokenPositions(
+      normalizedText,
+      normalizedTokens
+    );
 
     const matchedWords: MatchedBadWord[] = [];
-    const tokenSet = new Set(normalizedTokens); // 빠른 조회용 Set
+    const seen = new Set<string>(); // 중복 제거용
 
-    for (const candidate of normalizedCandidates) {
-      // 정규화된 후보 단어로 Redis 매칭
-      const isBad = clientId
-        ? await this.cacheService.isClientBadWord(clientId, candidate)
-        : await this.cacheService.isBadWord(candidate);
-
-      if (isBad) {
-        // 매칭된 단어의 상세 정보 조회
-        const wordInfo = await this.cacheService.getWordByNormalized(candidate);
-
-        if (wordInfo) {
-          // 중복 제거 (같은 단어가 여러 번 매칭될 수 있음)
-          const existing = matchedWords.find(
-            (m) => m.normalizedWord === candidate
-          );
-
-          if (!existing) {
-            // 부분 매칭 여부 판단
-            // 토큰에 정확히 일치하면 전체 단어 매칭, 아니면 부분 매칭
-            const isPartialMatch = !tokenSet.has(candidate);
-
-            matchedWords.push({
-              word: wordInfo.word,
-              normalizedWord: candidate,
-              severity: wordInfo.severity as Severity,
-              category: "", // Redis에 저장되지 않음, 필요시 확장
-              isPartialMatch,
-            });
-          }
-        }
+    for (const match of trieMatches) {
+      const key = `${match.normalizedWord}:${match.startIndex}:${match.endIndex}`;
+      if (seen.has(key)) {
+        continue;
       }
+      seen.add(key);
+
+      // 부분 매칭 여부 판단
+      // 매칭된 단어의 위치(startIndex, endIndex)가 토큰의 경계와 정확히 일치하면 전체 매칭
+      const isPartialMatch = !this.isFullWordMatch(
+        match.startIndex,
+        match.endIndex,
+        tokenPositions
+      );
+
+      matchedWords.push({
+        word: match.word,
+        normalizedWord: match.normalizedWord,
+        severity: match.severity as Severity,
+        category: "", // Trie에 저장되지 않음, 필요시 확장
+        isPartialMatch,
+      });
     }
 
     return matchedWords;
+  }
+
+  /**
+   * 토큰의 위치 정보를 계산합니다.
+   *
+   * @param text 전체 텍스트
+   * @param tokens 토큰 배열
+   * @returns 토큰별 시작/끝 위치 정보
+   */
+  private calculateTokenPositions(
+    text: string,
+    tokens: string[]
+  ): Array<{ startIndex: number; endIndex: number; token: string }> {
+    const positions: Array<{
+      startIndex: number;
+      endIndex: number;
+      token: string;
+    }> = [];
+
+    // 정규화된 텍스트에서 각 토큰의 정확한 위치 찾기
+    let searchIndex = 0;
+
+    for (const token of tokens) {
+      // 텍스트에서 토큰 찾기 (공백 고려)
+      const tokenIndex = text.indexOf(token, searchIndex);
+
+      if (tokenIndex !== -1) {
+        // 토큰 앞뒤가 공백이거나 텍스트의 시작/끝인지 확인 (전체 단어 매칭)
+        const beforeChar = tokenIndex > 0 ? text[tokenIndex - 1] : " ";
+        const afterChar =
+          tokenIndex + token.length < text.length
+            ? text[tokenIndex + token.length]
+            : " ";
+
+        // 공백으로 구분된 단어인지 확인
+        if (/\s/.test(beforeChar) && /\s/.test(afterChar)) {
+          positions.push({
+            startIndex: tokenIndex,
+            endIndex: tokenIndex + token.length,
+            token,
+          });
+        }
+
+        // 다음 검색 위치 업데이트
+        searchIndex = tokenIndex + token.length;
+      }
+    }
+
+    return positions;
+  }
+
+  /**
+   * 매칭된 단어가 전체 단어 매칭인지 확인합니다.
+   *
+   * @param startIndex 매칭된 단어의 시작 위치
+   * @param endIndex 매칭된 단어의 끝 위치
+   * @param tokenPositions 토큰 위치 정보
+   * @returns 전체 단어 매칭이면 true, 부분 매칭이면 false
+   */
+  private isFullWordMatch(
+    startIndex: number,
+    endIndex: number,
+    tokenPositions: Array<{
+      startIndex: number;
+      endIndex: number;
+      token: string;
+    }>
+  ): boolean {
+    // 매칭된 위치가 토큰의 경계와 정확히 일치하는지 확인
+    for (const tokenPos of tokenPositions) {
+      if (
+        startIndex === tokenPos.startIndex &&
+        endIndex === tokenPos.endIndex
+      ) {
+        return true; // 전체 단어 매칭
+      }
+    }
+    return false; // 부분 매칭
   }
 
   /**

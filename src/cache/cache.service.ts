@@ -3,25 +3,46 @@ import Redis from "ioredis";
 import { PrismaService } from "../database/prisma.service";
 import { CacheKeys } from "./cache-keys";
 import { REDIS_CLIENT } from "./redis.provider";
+import { TrieService } from "../filter/trie/trie.service";
 
 @Injectable()
 export class CacheService implements OnModuleInit {
   private readonly logger = new Logger(CacheService.name);
+  private trieService: TrieService | undefined;
 
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly prisma: PrismaService
   ) {}
 
+  /**
+   * TrieService를 설정합니다 (순환 의존성 해결을 위해 별도 메서드로 분리)
+   */
+  setTrieService(trieService: TrieService): void {
+    this.trieService = trieService;
+  }
+
   async onModuleInit() {
-    await this.loadGlobalBadWords();
-    this.logger.log("Cache initialized from database");
+    // Redis에 데이터가 있는지 확인
+    const hasCache = await this.checkRedisCache();
+
+    if (hasCache) {
+      // Redis에 데이터 있음 → FilterModule에서 Trie만 구축
+      this.logger.log("Redis cache found, Trie will be loaded from Redis");
+    } else {
+      // Redis 비어있음 → PostgreSQL에서 로드
+      this.logger.log("Redis cache empty, loading from PostgreSQL");
+      await this.loadGlobalBadWords(false); // Redis만 저장, Trie는 나중에
+    }
+    this.logger.log("Cache initialized");
   }
 
   /**
    * PostgreSQL에서 활성 금칙어를 로드하여 Redis에 저장
+   *
+   * @param includeTrie Trie에도 추가할지 여부 (기본값: true)
    */
-  async loadGlobalBadWords(): Promise<void> {
+  async loadGlobalBadWords(includeTrie: boolean = true): Promise<void> {
     try {
       const badWords = await this.prisma.badWord.findMany({
         where: { isActive: true },
@@ -66,6 +87,19 @@ export class CacheService implements OnModuleInit {
 
       await pipeline.exec();
       this.logger.log(`Loaded ${badWords.length} bad words into cache`);
+
+      // Trie에도 추가 (TrieService가 설정된 경우이고 includeTrie가 true인 경우)
+      if (includeTrie && this.trieService) {
+        for (const word of badWords) {
+          this.trieService.addWord(word.normalizedWord, {
+            word: word.word,
+            normalizedWord: word.normalizedWord,
+            id: word.id,
+            severity: word.severity,
+          });
+        }
+        this.logger.log(`Loaded ${badWords.length} bad words into Trie`);
+      }
     } catch (error) {
       this.logger.error("Failed to load bad words into cache:", error);
       throw error;
@@ -73,62 +107,72 @@ export class CacheService implements OnModuleInit {
   }
 
   /**
-   * 클라이언트별 금칙어 로드
+   * Redis 캐시에 데이터가 있는지 확인
    */
-  async loadClientBadWords(clientId: string): Promise<void> {
+  async checkRedisCache(): Promise<boolean> {
     try {
-      const clientBadWords = await this.prisma.clientBadWord.findMany({
-        where: {
-          clientId,
-          isActive: true,
-        },
-        include: {
-          badWord: true,
-        },
-      });
-
-      const pipeline = this.redis.pipeline();
-      pipeline.del(CacheKeys.clientBadWords(clientId));
-
-      for (const cbw of clientBadWords) {
-        pipeline.sadd(
-          CacheKeys.clientBadWords(clientId),
-          cbw.badWord.normalizedWord
-        );
-      }
-
-      await pipeline.exec();
-      this.logger.log(
-        `Loaded ${clientBadWords.length} client bad words for ${clientId}`
-      );
+      const exists = await this.redis.exists(CacheKeys.globalBadWords());
+      return exists > 0;
     } catch (error) {
-      this.logger.error(
-        `Failed to load client bad words for ${clientId}:`,
-        error
-      );
+      this.logger.error("Failed to check Redis cache:", error);
+      return false;
     }
   }
 
   /**
-   * 단어가 금칙어인지 확인 (글로벌)
+   * Redis에서 Trie 구축
+   */
+  async loadTrieFromRedis(): Promise<void> {
+    if (!this.trieService) {
+      return;
+    }
+
+    try {
+      // Redis에서 모든 정규화된 단어 가져오기
+      const normalizedWords = await this.redis.smembers(
+        CacheKeys.globalBadWords()
+      );
+
+      if (normalizedWords.length === 0) {
+        this.logger.warn(
+          "Redis cache is empty, loading from PostgreSQL instead"
+        );
+        await this.loadGlobalBadWords(); // PostgreSQL에서 로드
+        return;
+      }
+
+      // 각 단어의 상세 정보를 가져와서 Trie에 추가
+      for (const normalizedWord of normalizedWords) {
+        const wordInfo = await this.getWordByNormalized(normalizedWord);
+        if (wordInfo) {
+          this.trieService.addWord(normalizedWord, {
+            word: wordInfo.word,
+            normalizedWord: normalizedWord,
+            id: wordInfo.id,
+            severity: wordInfo.severity,
+          });
+        }
+      }
+
+      this.logger.log(
+        `Loaded ${normalizedWords.length} bad words into Trie from Redis`
+      );
+    } catch (error) {
+      this.logger.error(
+        "Failed to load Trie from Redis, loading from PostgreSQL:",
+        error
+      );
+      // Redis 로드 실패 시 PostgreSQL에서 로드
+      await this.loadGlobalBadWords();
+    }
+  }
+
+  /**
+   * 단어가 금칙어인지 확인
    */
   async isBadWord(normalizedWord: string): Promise<boolean> {
     const result = await this.redis.sismember(
       CacheKeys.globalBadWords(),
-      normalizedWord
-    );
-    return result === 1;
-  }
-
-  /**
-   * 단어가 금칙어인지 확인 (클라이언트별)
-   */
-  async isClientBadWord(
-    clientId: string,
-    normalizedWord: string
-  ): Promise<boolean> {
-    const result = await this.redis.sismember(
-      CacheKeys.clientBadWords(clientId),
       normalizedWord
     );
     return result === 1;
@@ -189,6 +233,16 @@ export class CacheService implements OnModuleInit {
     });
 
     await pipeline.exec();
+
+    // Trie에도 추가
+    if (this.trieService) {
+      this.trieService.addWord(word.normalizedWord, {
+        word: word.word,
+        normalizedWord: word.normalizedWord,
+        id: word.id,
+        severity: word.severity,
+      });
+    }
   }
 
   /**
@@ -235,6 +289,23 @@ export class CacheService implements OnModuleInit {
     });
 
     await pipeline.exec();
+
+    // Trie도 업데이트
+    if (this.trieService) {
+      if (oldNormalized && oldNormalized !== word.normalizedWord) {
+        this.trieService.removeWord(oldNormalized);
+      }
+      if (word.isActive) {
+        this.trieService.addWord(word.normalizedWord, {
+          word: word.word,
+          normalizedWord: word.normalizedWord,
+          id: word.id,
+          severity: word.severity,
+        });
+      } else {
+        this.trieService.removeWord(word.normalizedWord);
+      }
+    }
   }
 
   /**
@@ -246,6 +317,11 @@ export class CacheService implements OnModuleInit {
     pipeline.del(CacheKeys.normalizedWordMapping(normalizedWord));
     pipeline.del(CacheKeys.wordDetail(wordId));
     await pipeline.exec();
+
+    // Trie에서도 제거
+    if (this.trieService) {
+      this.trieService.removeWord(normalizedWord);
+    }
   }
 
   /**

@@ -26,7 +26,11 @@ services:
     container_name: filtering_redis
     ports:
       - "${REDIS_PORT:-6380}:6379" # 로컬 6379와 충돌 방지 (기본값 6380)
-    command: redis-server --requirepass ${REDIS_PASSWORD:-}
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-}
+      --save 60 1000
+      --appendonly yes
     volumes:
       - redis_data:/data
     restart: unless-stopped
