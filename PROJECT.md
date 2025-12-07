@@ -74,8 +74,10 @@ filtering/
 │   │   │   ├── text-normalizer.ts
 │   │   │   ├── evasion-detectors.ts  # 회피 패턴 감지
 │   │   │   └── evasion-analyzer.ts    # 회피 패턴 분석
-│   │   └── tokenization/      # 토큰화 및 후보 추출
-│   │       └── tokenization.service.ts
+│   │   ├── tokenization/      # 토큰화
+│   │   │   └── tokenization.service.ts
+│   │   └── trie/              # Trie 기반 매칭
+│   │       └── trie.service.ts
 │   │
 │   ├── health/                # Health Check API
 │   │   └── health.controller.ts
@@ -108,9 +110,9 @@ filtering/
     ↓
 [2] 텍스트 정규화
     ↓
-[3] 토큰화 및 후보 추출 (Sliding Window)
+[3] 토큰화
     ↓
-[4] Fast Path: Redis 사전 매칭
+[4] Fast Path: Trie 기반 매칭
     ├─ 전체 단어 매칭 발견 → 심각도 높으면 즉시 차단
     └─ 부분 매칭만 발견 → AI 호출
     ↓
@@ -167,20 +169,25 @@ filtering/
   - Mixed Script: 0.2
   - Space Separation: 0.3
 
-### 2. 토큰화 및 후보 추출 (Tokenization)
+### 2. 토큰화 (Tokenization)
 
 **TokenizationService**:
 
 - **tokenize()**: 공백 기준 토큰 분리
-- **extractCandidates()**: Sliding Window로 모든 부분 문자열 추출
-  - 각 토큰에 대해 1자부터 전체 길이까지 모든 부분 문자열 생성
-  - 예: `"시발점"` → `["시", "시발", "시발점", "발", "발점", "점"]`
 
-### 3. 사전 매칭 (Dictionary Matching)
+### 3. Trie 기반 매칭 (Dictionary Matching)
+
+**TrieService**:
+
+- **Trie 데이터 구조**: 메모리 기반 금칙어 트리
+- **findAllMatches()**: 텍스트를 한 번 순회하여 모든 매칭 발견
+- **성능**: O(n) 시간 복잡도 (n = 텍스트 길이)
+- **네트워크 I/O**: 0회 (메모리 직접 접근)
 
 **CacheService**:
 
 - **Write-through 캐싱**: PostgreSQL → Redis 자동 동기화
+- **스마트 로드**: Redis에 데이터가 있으면 Redis → Trie, 없으면 PostgreSQL → Redis + Trie
 - **Redis 키 구조**:
   - `bad_words:global`: 글로벌 금칙어 Set
   - `bad_words:normalized`: 정규화된 단어 → 상세 정보 Hash
@@ -188,8 +195,8 @@ filtering/
 
 **부분 매칭 구분**:
 
-- **전체 단어 매칭**: 토큰에 정확히 일치하는 경우
-- **부분 매칭**: Sliding Window에서 추출된 부분 문자열 매칭
+- **전체 단어 매칭**: 매칭된 단어의 위치가 토큰의 경계와 정확히 일치하는 경우
+- **부분 매칭**: 매칭된 단어가 토큰의 일부인 경우 (예: "시발점" → "시발")
 - 부분 매칭은 가중치 50% 감소
 
 ### 4. AI/RAG 파이프라인
@@ -201,7 +208,7 @@ filtering/
   1. 입력 텍스트를 LLM에 전달
   2. LLM이 의심스러운 단어/구문 추출
   3. 추출된 후보를 정규화
-  4. Redis에서 매칭 확인
+  4. Trie에서 매칭 확인
 
 **Vector Store (ChromaDB)**:
 
