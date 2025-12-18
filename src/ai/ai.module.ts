@@ -3,12 +3,11 @@ import { ConfigModule } from "@nestjs/config";
 import { VectorStoreService } from "./vector-store.service";
 import { EmbeddingService } from "./embedding.service";
 import { LLMService } from "./llm.service";
-import { FilterModule } from "../filter/filter.module";
 import { CHROMA_CLIENT, ChromaProvider } from "./chroma.provider";
 import { OPENAI_API_KEY, OpenAIConfigProvider } from "./openai-config.provider";
 
 @Module({
-  imports: [ConfigModule, FilterModule],
+  imports: [ConfigModule],
   providers: [
     ChromaProvider,
     OpenAIConfigProvider,

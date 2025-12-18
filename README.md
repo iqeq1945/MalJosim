@@ -31,7 +31,7 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5433/filtering
 # Redis
 REDIS_HOST=localhost
 REDIS_PORT=6380
-REDIS_PASSWORD=
+REDIS_PASSWORD=  # 비어있으면 비밀번호 없이 실행, 설정하면 해당 비밀번호 사용
 
 # OpenAI
 OPENAI_API_KEY=your-openai-api-key
@@ -171,47 +171,47 @@ ClientBadWord {
 
 ### 필터링 API
 
+**⚠️ 주의사항**: curl에서 한글을 직접 전달할 때 인코딩 문제가 발생할 수 있습니다. 파일을 통해 요청하거나 Postman/Insomnia 같은 도구를 사용하는 것을 권장합니다.
+
 ```bash
+# 방법 1: 파일을 통해 요청 (한글 인코딩 보존)
+echo '{"text":"시발","clientId":"test-client"}' > test.json
 curl -X POST http://localhost:3000/filter/check \
   -H "Content-Type: application/json" \
-  -d '{
-    "text": "시발 개새끼",
-    "clientId": "optional-client-id"
-  }'
+  --data-binary @test.json
+
+# 방법 2: Postman/Insomnia 사용 (권장)
+# POST http://localhost:3000/filter/check
+# Body: {"text": "시발", "clientId": "test-client"}
 ```
 
 **응답**:
 
 ```json
 {
-  "status": "BLOCK",
-  "text": "시발 개새끼",
-  "dictionaryScore": 0.85,
-  "suspiciousScore": 0.0,
+  "status": "block",
+  "text": "시발",
+  "dictionaryScore": 0.9,
   "matchedWords": [
     {
       "word": "시발",
       "normalizedWord": "시발",
       "severity": "HIGH",
-      "category": "PROFANITY",
-      "isPartialMatch": false
-    },
-    {
-      "word": "개새끼",
-      "normalizedWord": "개새끼",
-      "severity": "CRITICAL",
-      "category": "PROFANITY",
+      "category": "",
       "isPartialMatch": false
     }
-  ]
+  ],
+  "totalMatches": 1,
+  "hasEvasionPattern": false,
+  "suspiciousScore": 0
 }
 ```
 
 **Status 값**:
 
-- `ALLOW`: 허용
-- `WARN`: 경고 (낮은 심각도)
-- `BLOCK`: 차단
+- `allow`: 허용
+- `warning`: 경고 (낮은 심각도)
+- `block`: 차단
 
 ### 금칙어 관리 API
 
@@ -361,6 +361,7 @@ npm run test:cov
 1. **공백 분리 패턴**: "시 발" 같은 경우 현재 AI로 전달됨. Fast Path에서 처리하도록 개선 예정
 2. **테스트 코드 부재**: 단위/통합 테스트 추가 예정
 3. **에러 핸들링**: 전역 예외 필터 추가 예정
+4. **한글 인코딩**: curl에서 JSON을 직접 전달할 때 한글이 깨질 수 있음. 파일을 통해 요청하거나 Postman/Insomnia 사용 권장
 
 ---
 
