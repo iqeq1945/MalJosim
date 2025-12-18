@@ -27,10 +27,15 @@ services:
     ports:
       - "${REDIS_PORT:-6380}:6379" # 로컬 6379와 충돌 방지 (기본값 6380)
     command: >
-      redis-server
-      --requirepass ${REDIS_PASSWORD:-}
-      --save 60 1000
-      --appendonly yes
+      sh -c "
+      if [ -n \"$$REDIS_PASSWORD\" ]; then
+        redis-server --requirepass $$REDIS_PASSWORD --save 60 1000 --appendonly yes
+      else
+        redis-server --save 60 1000 --appendonly yes
+      fi
+      "
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
     volumes:
       - redis_data:/data
     restart: unless-stopped

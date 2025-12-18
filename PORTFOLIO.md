@@ -451,6 +451,45 @@ async loadTrieFromRedis(): Promise<void> {
 
 ---
 
+## **검증 및 테스트**
+
+### **시스템 검증 완료**
+
+- ✅ **Trie 로드 검증**: 서버 시작 시 PostgreSQL → Redis → Trie 자동 로드 확인
+- ✅ **필터링 동작 검증**: "시발" 등 금칙어 정상 차단 확인
+- ✅ **부분 매칭 구분**: "시발점" 같은 정상 단어에서 False Positive 방지 확인
+- ✅ **데이터베이스 연결**: PostgreSQL, Redis 정상 연결 확인
+
+### **테스트 결과 예시**
+
+```json
+// 입력: "시발"
+{
+  "status": "block",
+  "text": "시발",
+  "dictionaryScore": 0.9,
+  "matchedWords": [
+    {
+      "word": "시발",
+      "normalizedWord": "시발",
+      "severity": "HIGH",
+      "isPartialMatch": false
+    }
+  ],
+  "totalMatches": 1,
+  "hasEvasionPattern": false,
+  "suspiciousScore": 0
+}
+```
+
+### **주의사항**
+
+- **한글 인코딩**: curl에서 JSON을 직접 전달할 때 한글이 깨질 수 있음
+  - 해결: 파일을 통해 요청하거나 Postman/Insomnia 사용 권장
+  - 예시: `echo '{"text":"시발"}' > test.json && curl -X POST ... --data-binary @test.json`
+
+---
+
 ## **추후 개발 예정사항**
 
 ### **1. 공백 분리 패턴 Fast Path 처리**

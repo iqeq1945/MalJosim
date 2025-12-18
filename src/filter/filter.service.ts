@@ -183,6 +183,25 @@ export class FilterService {
   ): MatchedBadWord[] {
     // Trie에서 모든 매칭 찾기 (위치 정보 포함)
     const trieMatches = this.trieService.findAllMatches(normalizedText);
+    // #region agent log
+    fetch("http://127.0.0.1:7243/ingest/55191c69-c180-4618-ac54-ada635ffc281", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location: "filter.service.ts:185",
+        message: "Trie matches",
+        data: {
+          normalizedText,
+          trieMatchCount: trieMatches.length,
+          trieMatches: trieMatches.slice(0, 5),
+        },
+        timestamp: Date.now(),
+        sessionId: "debug-session",
+        runId: "run1",
+        hypothesisId: "B",
+      }),
+    }).catch(() => {});
+    // #endregion
 
     // 토큰의 위치 정보 계산 (부분 매칭 판단용)
     const tokenPositions = this.calculateTokenPositions(

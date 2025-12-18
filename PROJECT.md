@@ -338,7 +338,7 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5433/filtering
 # Redis
 REDIS_HOST=localhost
 REDIS_PORT=6380
-REDIS_PASSWORD=
+REDIS_PASSWORD=  # 비어있으면 비밀번호 없이 실행, 설정하면 해당 비밀번호 사용
 
 # OpenAI
 OPENAI_API_KEY=your-openai-api-key
@@ -421,6 +421,7 @@ npm run prisma:studio
   - Write-through 캐싱 전략
   - 글로벌/클라이언트별 캐시 분리
   - 정규화된 단어 → 상세 정보 매핑
+  - REDIS_PASSWORD가 비어있을 때 자동 처리 (docker-compose.yml)
 
 - [x] **텍스트 정규화**
   - TextNormalizer (기본 정규화)
@@ -449,6 +450,15 @@ npm run prisma:studio
   - 책임 분리 (SRP 준수)
   - 파일 통합 (EvasionDetectors, TokenizationService)
   - 네이밍 개선
+
+### ✅ 검증 완료
+
+- [x] **시스템 검증**
+  - Trie 로드 검증: 서버 시작 시 PostgreSQL → Redis → Trie 자동 로드 확인
+  - 필터링 동작 검증: 금칙어 정상 차단 확인 ("시발" 등)
+  - 부분 매칭 구분: "시발점" 같은 정상 단어에서 False Positive 방지 확인
+  - 데이터베이스 연결: PostgreSQL, Redis 정상 연결 확인
+  - Redis 설정 개선: REDIS_PASSWORD가 비어있을 때 자동 처리
 
 ### 🔄 진행 중 / 개선 필요
 
@@ -547,6 +557,7 @@ npm run prisma:studio
 1. **공백 분리 패턴**: "시 발" 같은 경우 현재 AI로 전달됨. Fast Path에서 처리하도록 개선 필요
 2. **테스트 코드 부재**: 현재 테스트 파일이 없음. 단위/통합 테스트 추가 필요
 3. **에러 핸들링**: 전역 예외 필터가 없어 일관성 없는 에러 응답
+4. **한글 인코딩**: curl에서 JSON을 직접 전달할 때 한글이 깨질 수 있음. 파일을 통해 요청하거나 Postman/Insomnia 사용 권장
 
 ---
 
