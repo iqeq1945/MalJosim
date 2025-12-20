@@ -9,6 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from "@nestjs/common";
 import { BadWordService } from "./bad-word.service";
 import { CreateBadWordDto } from "./dto/create-bad-word.dto";
@@ -18,12 +19,14 @@ import {
   BadWordResponseDto,
   BadWordListResponseDto,
 } from "./dto/bad-word-response.dto";
+import { ApiKeyGuard } from "../auth/api-key.guard";
 
 @Controller("bad-words")
 export class BadWordController {
   constructor(private readonly badWordService: BadWordService) {}
 
   @Post()
+  @UseGuards(ApiKeyGuard)
   @HttpCode(HttpStatus.CREATED)
   async create(
     @Body() createBadWordDto: CreateBadWordDto
@@ -38,12 +41,18 @@ export class BadWordController {
     return this.badWordService.findAll(query);
   }
 
+  @Get("word/:word")
+  async findByWord(@Param("word") word: string): Promise<BadWordResponseDto> {
+    return this.badWordService.findByWord(word);
+  }
+
   @Get(":id")
   async findOne(@Param("id") id: string): Promise<BadWordResponseDto> {
     return this.badWordService.findOne(id);
   }
 
   @Patch(":id")
+  @UseGuards(ApiKeyGuard)
   async update(
     @Param("id") id: string,
     @Body() updateBadWordDto: UpdateBadWordDto
@@ -52,6 +61,7 @@ export class BadWordController {
   }
 
   @Delete(":id")
+  @UseGuards(ApiKeyGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param("id") id: string): Promise<void> {
     return this.badWordService.remove(id);
