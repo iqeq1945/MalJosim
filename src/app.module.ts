@@ -5,6 +5,7 @@ import { CacheModule } from "./cache/cache.module";
 import { HealthModule } from "./health/health.module";
 import { BadWordModule } from "./bad-word/bad-word.module";
 import { FilterModule } from "./filter/filter.module";
+import { AuthModule } from "./auth/auth.module";
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { FilterModule } from "./filter/filter.module";
     HealthModule,
     BadWordModule,
     FilterModule,
+    AuthModule,
   ],
   controllers: [],
   providers: [],
