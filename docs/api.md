@@ -25,7 +25,29 @@ http://localhost:3000
 
 ### 인증
 
-현재 버전에서는 인증이 필요하지 않습니다. 향후 버전에서 추가될 수 있습니다.
+금칙어 관리 API의 등록(POST), 수정(PATCH), 삭제(DELETE) 엔드포인트는 API KEY 인증이 필요합니다.
+
+**API KEY 인증이 필요한 엔드포인트:**
+
+- `POST /bad-words` - 금칙어 등록
+- `PATCH /bad-words/:id` - 금칙어 수정
+- `DELETE /bad-words/:id` - 금칙어 삭제
+
+**인증 방법:**
+HTTP Header에 `X-API-Key`를 포함하여 요청하세요:
+
+```
+X-API-Key: your-admin-api-key
+```
+
+API KEY는 서버 환경 변수 `ADMIN_API_KEY`에 설정되어 있어야 합니다.
+
+**인증이 필요하지 않은 엔드포인트:**
+
+- `GET /bad-words` - 금칙어 목록 조회
+- `GET /bad-words/:id` - 금칙어 상세 조회
+- `POST /filter/check` - 필터링 API
+- 모든 헬스 체크 API
 
 ### Content-Type
 
@@ -364,6 +386,7 @@ Content-Type: application/json
 ```bash
 curl -X POST http://localhost:3000/bad-words \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: your-admin-api-key" \
   -d '{
     "word": "시발",
     "normalizedWord": "시발",
@@ -390,6 +413,7 @@ curl -X POST http://localhost:3000/bad-words \
 #### 에러
 
 - **400 Bad Request**: 요청 바디가 유효하지 않거나 필수 필드가 누락된 경우
+- **401 Unauthorized**: API KEY가 누락되었거나 유효하지 않은 경우
 - **409 Conflict**: 동일한 단어가 이미 존재하는 경우
 - **500 Internal Server Error**: 서버 내부 오류
 
@@ -470,7 +494,10 @@ curl "http://localhost:3000/bad-words/550e8400-e29b-41d4-a716-446655440000"
 
 ```
 Content-Type: application/json
+X-API-Key: your-admin-api-key
 ```
+
+> **⚠️ 인증 필요**: 이 엔드포인트는 유효한 API KEY가 필요합니다.
 
 **Body:**
 
@@ -510,6 +537,7 @@ Content-Type: application/json
 ```bash
 curl -X PATCH http://localhost:3000/bad-words/550e8400-e29b-41d4-a716-446655440000 \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: your-admin-api-key" \
   -d '{
     "severity": "CRITICAL",
     "isActive": false
@@ -534,6 +562,7 @@ curl -X PATCH http://localhost:3000/bad-words/550e8400-e29b-41d4-a716-4466554400
 #### 에러
 
 - **400 Bad Request**: 요청 바디가 유효하지 않은 경우
+- **401 Unauthorized**: API KEY가 누락되었거나 유효하지 않은 경우
 - **404 Not Found**: 해당 ID의 금칙어가 존재하지 않는 경우
 - **500 Internal Server Error**: 서버 내부 오류
 
@@ -551,6 +580,14 @@ curl -X PATCH http://localhost:3000/bad-words/550e8400-e29b-41d4-a716-4466554400
 | -------- | ------ | ---- | ---------------- |
 | `id`     | string | ✅   | 금칙어 ID (UUID) |
 
+**Headers:**
+
+```
+X-API-Key: your-admin-api-key
+```
+
+> **⚠️ 인증 필요**: 이 엔드포인트는 유효한 API KEY가 필요합니다.
+
 #### 응답
 
 **성공 (204 No Content):**
@@ -562,7 +599,8 @@ curl -X PATCH http://localhost:3000/bad-words/550e8400-e29b-41d4-a716-4466554400
 **요청:**
 
 ```bash
-curl -X DELETE http://localhost:3000/bad-words/550e8400-e29b-41d4-a716-446655440000
+curl -X DELETE http://localhost:3000/bad-words/550e8400-e29b-41d4-a716-446655440000 \
+  -H "X-API-Key: your-admin-api-key"
 ```
 
 **응답:**
@@ -873,6 +911,7 @@ curl "http://localhost:3000/health/redis"
 | `201` | 생성 성공                                                    |
 | `204` | 성공 (응답 본문 없음)                                        |
 | `400` | 잘못된 요청 - 요청 바디가 유효하지 않거나 필수 필드가 누락됨 |
+| `401` | 인증 실패 - API KEY가 누락되었거나 유효하지 않음             |
 | `404` | 리소스를 찾을 수 없음                                        |
 | `409` | 충돌 - 리소스가 이미 존재함                                  |
 | `500` | 서버 내부 오류                                               |
@@ -915,6 +954,28 @@ curl "http://localhost:3000/health/redis"
   "statusCode": 404,
   "message": "BadWord with id 550e8400-e29b-41d4-a716-446655440000 not found",
   "error": "Not Found"
+}
+```
+
+#### 401 Unauthorized
+
+**API KEY 누락:**
+
+```json
+{
+  "statusCode": 401,
+  "message": "API Key is required",
+  "error": "Unauthorized"
+}
+```
+
+**유효하지 않은 API KEY:**
+
+```json
+{
+  "statusCode": 401,
+  "message": "Invalid API Key",
+  "error": "Unauthorized"
 }
 ```
 
