@@ -41,6 +41,11 @@ export class BadWordController {
     return this.badWordService.findAll(query);
   }
 
+  @Get("word/:word")
+  async findByWord(@Param("word") word: string): Promise<BadWordResponseDto> {
+    return this.badWordService.findByWord(word);
+  }
+
   @Get(":id")
   async findOne(@Param("id") id: string): Promise<BadWordResponseDto> {
     return this.badWordService.findOne(id);

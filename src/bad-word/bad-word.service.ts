@@ -85,6 +85,18 @@ export class BadWordService {
     return BadWordResponseDto.from(badWord);
   }
 
+  async findByWord(word: string): Promise<BadWordResponseDto> {
+    const badWord = await this.prisma.badWord.findUnique({
+      where: { word },
+    });
+
+    if (!badWord) {
+      throw new NotFoundException(`Bad word with word "${word}" not found`);
+    }
+
+    return BadWordResponseDto.from(badWord);
+  }
+
   async update(id: string, dto: UpdateBadWordDto): Promise<BadWordResponseDto> {
     // 존재 여부 확인
     const existing = await this.prisma.badWord.findUnique({

@@ -419,6 +419,65 @@ curl -X POST http://localhost:3000/bad-words \
 
 ---
 
+### GET `/bad-words/word/:word`
+
+단어로 금칙어를 조회합니다.
+
+#### 요청
+
+**Path Parameters:**
+
+| 파라미터 | 타입   | 필수 | 설명          |
+| -------- | ------ | ---- | ------------- |
+| `word`   | string | ✅   | 금칙어 (단어) |
+
+#### 응답
+
+**성공 (200 OK):**
+
+```json
+{
+  "id": "string",
+  "word": "string",
+  "normalizedWord": "string",
+  "severity": "MEDIUM",
+  "category": "OTHER",
+  "isActive": true,
+  "createdAt": "2024-01-01T00:00:00.000Z",
+  "updatedAt": "2024-01-01T00:00:00.000Z"
+}
+```
+
+#### 예제
+
+**요청:**
+
+```bash
+curl "http://localhost:3000/bad-words/word/시발"
+```
+
+**응답:**
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "word": "시발",
+  "normalizedWord": "시발",
+  "severity": "HIGH",
+  "category": "PROFANITY",
+  "isActive": true,
+  "createdAt": "2024-01-01T00:00:00.000Z",
+  "updatedAt": "2024-01-01T00:00:00.000Z"
+}
+```
+
+#### 에러
+
+- **404 Not Found**: 해당 단어의 금칙어가 존재하지 않는 경우
+- **500 Internal Server Error**: 서버 내부 오류
+
+---
+
 ### GET `/bad-words/:id`
 
 특정 금칙어의 상세 정보를 조회합니다.
