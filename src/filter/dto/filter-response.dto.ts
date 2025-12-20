@@ -1,4 +1,5 @@
 import { Severity } from "@prisma/client";
+import { EvasionPattern } from "../normalization/evasion-analyzer";
 
 /**
  * 필터링 결과 상태
@@ -27,6 +28,7 @@ export class FilterResponseDto {
   totalMatches: number; // 매칭된 단어 개수
   hasEvasionPattern: boolean; // 회피 패턴 감지 여부
   suspiciousScore: number; // 의심도 점수 (0-1, 회피 패턴 기반)
+  evasionPatterns?: EvasionPattern; // 회피 패턴 상세 정보
 
   constructor(data: {
     status: FilterStatus;
@@ -36,6 +38,7 @@ export class FilterResponseDto {
     totalMatches: number;
     hasEvasionPattern: boolean;
     suspiciousScore: number;
+    evasionPatterns?: EvasionPattern;
   }) {
     this.status = data.status;
     this.text = data.text;
@@ -44,12 +47,16 @@ export class FilterResponseDto {
     this.totalMatches = data.totalMatches;
     this.hasEvasionPattern = data.hasEvasionPattern;
     this.suspiciousScore = data.suspiciousScore;
+    this.evasionPatterns = data.evasionPatterns;
   }
 
   /**
    * 허용 상태로 생성
    */
-  static allow(text: string): FilterResponseDto {
+  static allow(
+    text: string,
+    evasionPatterns?: EvasionPattern
+  ): FilterResponseDto {
     return new FilterResponseDto({
       status: "allow",
       text,
@@ -57,7 +64,8 @@ export class FilterResponseDto {
       matchedWords: [],
       totalMatches: 0,
       hasEvasionPattern: false,
-      suspiciousScore: 0,
+      suspiciousScore: evasionPatterns?.suspiciousScore || 0,
+      evasionPatterns,
     });
   }
 
@@ -68,7 +76,8 @@ export class FilterResponseDto {
     text: string,
     matchedWords: MatchedBadWord[],
     dictionaryScore: number,
-    suspiciousScore: number
+    suspiciousScore: number,
+    evasionPatterns?: EvasionPattern
   ): FilterResponseDto {
     return new FilterResponseDto({
       status: "warning",
@@ -78,6 +87,7 @@ export class FilterResponseDto {
       totalMatches: matchedWords.length,
       hasEvasionPattern: suspiciousScore > 0,
       suspiciousScore,
+      evasionPatterns,
     });
   }
 
@@ -88,7 +98,8 @@ export class FilterResponseDto {
     text: string,
     matchedWords: MatchedBadWord[],
     dictionaryScore: number,
-    suspiciousScore: number
+    suspiciousScore: number,
+    evasionPatterns?: EvasionPattern
   ): FilterResponseDto {
     return new FilterResponseDto({
       status: "block",
@@ -98,6 +109,7 @@ export class FilterResponseDto {
       totalMatches: matchedWords.length,
       hasEvasionPattern: suspiciousScore > 0,
       suspiciousScore,
+      evasionPatterns,
     });
   }
 }

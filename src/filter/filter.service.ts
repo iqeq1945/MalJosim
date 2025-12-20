@@ -9,6 +9,7 @@ import {
   FilterStatus,
   MatchedBadWord,
 } from "./dto/filter-response.dto";
+import { EvasionPattern } from "./normalization/evasion-analyzer";
 import { Severity } from "@prisma/client";
 
 /**
@@ -44,7 +45,8 @@ export class FilterService {
     // clientId는 요청에는 있지만 현재는 사용하지 않음
 
     if (!text || text.trim().length === 0) {
-      return FilterResponseDto.allow(text || "");
+      const emptyAnalysis = this.normalizationService.analyze(text || "");
+      return FilterResponseDto.allow(text || "", emptyAnalysis.evasionPatterns);
     }
 
     // 1. 텍스트 분석 (회피 패턴 감지)
@@ -75,7 +77,8 @@ export class FilterService {
           text,
           fastMatches,
           fullScore,
-          suspiciousScore
+          suspiciousScore,
+          analysis.evasionPatterns
         );
       }
     }
@@ -129,7 +132,8 @@ export class FilterService {
       text,
       allMatches,
       dictionaryScore,
-      enhancedSuspiciousScore
+      enhancedSuspiciousScore,
+      analysis.evasionPatterns
     );
   }
 
@@ -141,6 +145,7 @@ export class FilterService {
    * @param matchedWords 매칭된 금칙어 목록
    * @param dictionaryScore 사전 기반 점수
    * @param suspiciousScore 의심도 점수
+   * @param evasionPatterns 회피 패턴 정보
    * @returns 필터링 결과 DTO
    */
   private createResponse(
@@ -148,24 +153,27 @@ export class FilterService {
     text: string,
     matchedWords: MatchedBadWord[],
     dictionaryScore: number,
-    suspiciousScore: number
+    suspiciousScore: number,
+    evasionPatterns?: EvasionPattern
   ): FilterResponseDto {
     switch (status) {
       case "allow":
-        return FilterResponseDto.allow(text);
+        return FilterResponseDto.allow(text, evasionPatterns);
       case "warning":
         return FilterResponseDto.warning(
           text,
           matchedWords,
           dictionaryScore,
-          suspiciousScore
+          suspiciousScore,
+          evasionPatterns
         );
       case "block":
         return FilterResponseDto.block(
           text,
           matchedWords,
           dictionaryScore,
-          suspiciousScore
+          suspiciousScore,
+          evasionPatterns
         );
     }
   }
