@@ -1,15 +1,16 @@
 {
   "name": "maljosim",
   "version": "0.1.0",
-  "description": "Profanity filtering API with RAG + LLM",
+  "description": "Profanity filtering API with LLM",
   "author": "",
   "private": true,
   "license": "MIT",
   "scripts": {
-    "build": "nest build",
+    "build": "nest build && npm run copy:prompts",
+    "copy:prompts": "node -e \"const fs=require('fs');const path=require('path');const src=path.join('src','ai','prompts');const dist=path.join('dist','src','ai','prompts');if(fs.existsSync(src)){fs.mkdirSync(dist,{recursive:true});fs.readdirSync(src).forEach(f=>{fs.copyFileSync(path.join(src,f),path.join(dist,f));});console.log('Prompts copied');}\"",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
-    "start:dev": "nest start --watch",
+    "start:dev": "npm run copy:prompts && nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
@@ -20,11 +21,14 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "ts-node prisma/seed.ts"
+    "prisma:seed": "ts-node prisma/seed.ts",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@langchain/community": "^0.0.20",
+    "@langchain/ollama": "^1.1.0",
     "@langchain/openai": "^0.0.10",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.0.0",
@@ -34,7 +38,6 @@
     "@prisma/client": "^7.0.0",
     "cache-manager": "^5.2.0",
     "cache-manager-redis-store": "^3.0.0",
-    "chromadb": "^1.8.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",
     "ioredis": "^5.3.0",
