@@ -18,36 +18,45 @@ export interface MatchedBadWord {
 }
 
 /**
+ * AI 판단 결과
+ */
+export interface AIJudgment {
+  isProfanity: boolean; // 욕설 여부
+  confidence: number; // 신뢰도 (0-1)
+  reason?: string; // 판단 이유
+}
+
+/**
  * 필터링 결과 DTO
  */
 export class FilterResponseDto {
   status: FilterStatus; // allow | warning | block
   text: string; // 원본 텍스트
+  isProfanity: boolean; // 욕설 여부 (최종 판단)
   dictionaryScore: number; // 사전 기반 점수 (0-1)
   matchedWords: MatchedBadWord[]; // 매칭된 금칙어 목록
-  totalMatches: number; // 매칭된 단어 개수
+  aiJudgment?: AIJudgment; // AI 판단 결과 (있을 경우만)
   hasEvasionPattern: boolean; // 회피 패턴 감지 여부
   suspiciousScore: number; // 의심도 점수 (0-1, 회피 패턴 기반)
-  evasionPatterns?: EvasionPattern; // 회피 패턴 상세 정보
 
   constructor(data: {
     status: FilterStatus;
     text: string;
+    isProfanity: boolean;
     dictionaryScore: number;
     matchedWords: MatchedBadWord[];
-    totalMatches: number;
+    aiJudgment?: AIJudgment;
     hasEvasionPattern: boolean;
     suspiciousScore: number;
-    evasionPatterns?: EvasionPattern;
   }) {
     this.status = data.status;
     this.text = data.text;
+    this.isProfanity = data.isProfanity;
     this.dictionaryScore = data.dictionaryScore;
     this.matchedWords = data.matchedWords;
-    this.totalMatches = data.totalMatches;
+    this.aiJudgment = data.aiJudgment;
     this.hasEvasionPattern = data.hasEvasionPattern;
     this.suspiciousScore = data.suspiciousScore;
-    this.evasionPatterns = data.evasionPatterns;
   }
 
   /**
@@ -55,17 +64,18 @@ export class FilterResponseDto {
    */
   static allow(
     text: string,
-    evasionPatterns?: EvasionPattern
+    suspiciousScore: number = 0,
+    aiJudgment?: AIJudgment
   ): FilterResponseDto {
     return new FilterResponseDto({
       status: "allow",
       text,
+      isProfanity: aiJudgment?.isProfanity || false,
       dictionaryScore: 0,
       matchedWords: [],
-      totalMatches: 0,
-      hasEvasionPattern: false,
-      suspiciousScore: evasionPatterns?.suspiciousScore || 0,
-      evasionPatterns,
+      aiJudgment,
+      hasEvasionPattern: suspiciousScore > 0,
+      suspiciousScore,
     });
   }
 
@@ -77,17 +87,20 @@ export class FilterResponseDto {
     matchedWords: MatchedBadWord[],
     dictionaryScore: number,
     suspiciousScore: number,
-    evasionPatterns?: EvasionPattern
+    aiJudgment?: AIJudgment
   ): FilterResponseDto {
+    // AI 판단이 있으면 그것을 우선, 없으면 사전 점수 기반으로 판단
+    const isProfanity = aiJudgment?.isProfanity ?? dictionaryScore >= 0.3;
+
     return new FilterResponseDto({
       status: "warning",
       text,
+      isProfanity,
       dictionaryScore,
       matchedWords,
-      totalMatches: matchedWords.length,
+      aiJudgment,
       hasEvasionPattern: suspiciousScore > 0,
       suspiciousScore,
-      evasionPatterns,
     });
   }
 
@@ -99,17 +112,18 @@ export class FilterResponseDto {
     matchedWords: MatchedBadWord[],
     dictionaryScore: number,
     suspiciousScore: number,
-    evasionPatterns?: EvasionPattern
+    aiJudgment?: AIJudgment
   ): FilterResponseDto {
+    // 차단은 항상 욕설로 판단
     return new FilterResponseDto({
       status: "block",
       text,
+      isProfanity: true,
       dictionaryScore,
       matchedWords,
-      totalMatches: matchedWords.length,
+      aiJudgment,
       hasEvasionPattern: suspiciousScore > 0,
       suspiciousScore,
-      evasionPatterns,
     });
   }
 }
