@@ -99,6 +99,7 @@ Content-Type: application/json
 {
   "status": "allow" | "warning" | "block",
   "text": "string",
+  "isProfanity": false,
   "dictionaryScore": 0.0,
   "matchedWords": [
     {
@@ -109,18 +110,13 @@ Content-Type: application/json
       "isPartialMatch": false
     }
   ],
-  "totalMatches": 0,
+  "aiJudgment": {
+    "isProfanity": false,
+    "confidence": 0.0,
+    "reason": "string"
+  },
   "hasEvasionPattern": false,
-  "suspiciousScore": 0.0,
-  "evasionPatterns": {
-    "hasLeetspeak": false,
-    "hasRepetition": false,
-    "hasJamoSeparation": false,
-    "hasZeroWidth": false,
-    "hasSpaceSeparation": false,
-    "suspiciousScore": 0.0,
-    "detectedPatterns": []
-  }
+  "suspiciousScore": 0.0
 }
 ```
 
@@ -130,6 +126,7 @@ Content-Type: application/json
 | ------------------------------- | ------- | ------------------------------------------------------ |
 | `status`                        | string  | 필터링 결과 상태 (`allow`, `warning`, `block`)         |
 | `text`                          | string  | 원본 텍스트                                            |
+| `isProfanity`                   | boolean | 욕설 여부 (최종 판단)                                  |
 | `dictionaryScore`               | number  | 사전 기반 점수 (0-1)                                   |
 | `matchedWords`                  | array   | 매칭된 금칙어 목록                                     |
 | `matchedWords[].word`           | string  | 원본 단어                                              |
@@ -137,10 +134,12 @@ Content-Type: application/json
 | `matchedWords[].severity`       | string  | 심각도 (LOW, MEDIUM, HIGH, CRITICAL)                   |
 | `matchedWords[].category`       | string  | 카테고리                                               |
 | `matchedWords[].isPartialMatch` | boolean | 부분 매칭 여부 (토큰 기준이 아닌 슬라이딩 윈도우 매칭) |
-| `totalMatches`                  | number  | 매칭된 단어 개수                                       |
+| `aiJudgment`                    | object  | AI 판단 결과 (AI 호출 시에만 포함)                     |
+| `aiJudgment.isProfanity`        | boolean | AI가 판단한 욕설 여부                                  |
+| `aiJudgment.confidence`         | number  | 신뢰도 (0-1)                                           |
+| `aiJudgment.reason`             | string  | 판단 이유 (선택적)                                     |
 | `hasEvasionPattern`             | boolean | 회피 패턴 감지 여부                                    |
 | `suspiciousScore`               | number  | 의심도 점수 (0-1, 회피 패턴 기반)                      |
-| `evasionPatterns`               | object  | 회피 패턴 상세 정보 (회피 패턴이 감지된 경우에만 포함) |
 
 #### 예제
 
@@ -161,6 +160,7 @@ curl -X POST http://localhost:3000/filter/check \
 {
   "status": "block",
   "text": "시발",
+  "isProfanity": true,
   "dictionaryScore": 0.9,
   "matchedWords": [
     {
@@ -171,7 +171,6 @@ curl -X POST http://localhost:3000/filter/check \
       "isPartialMatch": false
     }
   ],
-  "totalMatches": 1,
   "hasEvasionPattern": false,
   "suspiciousScore": 0
 }
@@ -183,6 +182,7 @@ curl -X POST http://localhost:3000/filter/check \
 {
   "status": "warning",
   "text": "바보",
+  "isProfanity": true,
   "dictionaryScore": 0.3,
   "matchedWords": [
     {
@@ -193,7 +193,6 @@ curl -X POST http://localhost:3000/filter/check \
       "isPartialMatch": false
     }
   ],
-  "totalMatches": 1,
   "hasEvasionPattern": false,
   "suspiciousScore": 0
 }
@@ -205,9 +204,36 @@ curl -X POST http://localhost:3000/filter/check \
 {
   "status": "allow",
   "text": "안녕하세요",
+  "isProfanity": false,
   "dictionaryScore": 0,
   "matchedWords": [],
-  "totalMatches": 0,
+  "hasEvasionPattern": false,
+  "suspiciousScore": 0
+}
+```
+
+**응답 (정상 단어 - AI 판단 포함):**
+
+```json
+{
+  "status": "warning",
+  "text": "시발점",
+  "isProfanity": false,
+  "dictionaryScore": 0.325,
+  "matchedWords": [
+    {
+      "word": "시발",
+      "normalizedWord": "시발",
+      "severity": "HIGH",
+      "category": "PROFANITY",
+      "isPartialMatch": true
+    }
+  ],
+  "aiJudgment": {
+    "isProfanity": false,
+    "confidence": 0.1,
+    "reason": "시발점은 정상 단어입니다"
+  },
   "hasEvasionPattern": false,
   "suspiciousScore": 0
 }
@@ -219,6 +245,7 @@ curl -X POST http://localhost:3000/filter/check \
 {
   "status": "block",
   "text": "시8발",
+  "isProfanity": true,
   "dictionaryScore": 0.8,
   "matchedWords": [
     {
@@ -229,18 +256,13 @@ curl -X POST http://localhost:3000/filter/check \
       "isPartialMatch": false
     }
   ],
-  "totalMatches": 1,
+  "aiJudgment": {
+    "isProfanity": true,
+    "confidence": 0.9,
+    "reason": "Leetspeak 패턴으로 욕설을 회피하려는 시도"
+  },
   "hasEvasionPattern": true,
-  "suspiciousScore": 0.3,
-  "evasionPatterns": {
-    "hasLeetspeak": true,
-    "hasRepetition": false,
-    "hasJamoSeparation": false,
-    "hasZeroWidth": false,
-    "hasSpaceSeparation": false,
-    "suspiciousScore": 0.3,
-    "detectedPatterns": ["leetspeak"]
-  }
+  "suspiciousScore": 0.3
 }
 ```
 

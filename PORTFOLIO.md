@@ -40,7 +40,7 @@
        │
        └──► AI Service (조건부)
             │
-            └──► OpenAI LLM (문맥 판단)
+            └──► Ollama Cloud LLM (문맥 판단)
 ```
 
 ---
@@ -244,14 +244,17 @@ Trie 기반 매칭만으로는 복잡한 회피 패턴이나 맥락을 판단하
 
 ### **1. LLM 기반 문맥 판단**
 
-OpenAI GPT-4o-mini를 사용하여 텍스트가 욕설인지 문맥 기반으로 판단합니다.
+Ollama Cloud LLM (gpt-oss:120b)을 사용하여 텍스트가 욕설인지 문맥 기반으로 판단합니다.
 
 **모델 설정**
 
 ```typescript
-this.llm = new ChatOpenAI({
-  openAIApiKey: this.apiKey,
-  modelName: "gpt-4o-mini", // 비용 효율적인 모델
+this.llm = new ChatOllama({
+  baseUrl: "https://ollama.com",
+  model: "gpt-oss:120b",
+  headers: {
+    Authorization: `Bearer ${this.apiKey}`,
+  },
   temperature: 0.1, // 일관성 있는 결과를 위해 낮은 temperature
 });
 ```
@@ -467,6 +470,7 @@ async loadTrieFromRedis(): Promise<void> {
 {
   "status": "block",
   "text": "시발",
+  "isProfanity": true,
   "dictionaryScore": 0.9,
   "matchedWords": [
     {
@@ -476,7 +480,31 @@ async loadTrieFromRedis(): Promise<void> {
       "isPartialMatch": false
     }
   ],
-  "totalMatches": 1,
+  "hasEvasionPattern": false,
+  "suspiciousScore": 0
+}
+```
+
+```json
+// 입력: "시발점" (정상 단어, AI 판단 포함)
+{
+  "status": "warning",
+  "text": "시발점",
+  "isProfanity": false,
+  "dictionaryScore": 0.325,
+  "matchedWords": [
+    {
+      "word": "시발",
+      "normalizedWord": "시발",
+      "severity": "HIGH",
+      "isPartialMatch": true
+    }
+  ],
+  "aiJudgment": {
+    "isProfanity": false,
+    "confidence": 0.1,
+    "reason": "시발점은 정상 단어입니다"
+  },
   "hasEvasionPattern": false,
   "suspiciousScore": 0
 }
@@ -514,9 +542,3 @@ async loadTrieFromRedis(): Promise<void> {
 - 금칙어 관리 웹 인터페이스
 - 필터링 통계 및 차단율 시각화
 - 클라이언트별 정책 관리 UI
-
-### **5. VectorStore 자동 동기화 (향후 확장)**
-
-- 금칙어 추가/수정 시 ChromaDB에 임베딩 벡터 자동 저장
-- 기존 금칙어 일괄 임베딩 및 VectorStore 마이그레이션 스크립트
-- VectorStore 기반 유사 단어 검색 성능 개선

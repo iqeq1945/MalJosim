@@ -33,11 +33,8 @@ REDIS_HOST=localhost
 REDIS_PORT=6380
 REDIS_PASSWORD=  # 비어있으면 비밀번호 없이 실행, 설정하면 해당 비밀번호 사용
 
-# OpenAI
-OPENAI_API_KEY=your-openai-api-key
-
-# ChromaDB
-CHROMA_URL=http://localhost:8000
+# Ollama Cloud
+OLLAMA_API_KEY=your-ollama-api-key
 ```
 
 ### 3. 인프라 시작
@@ -50,7 +47,6 @@ docker-compose up -d
 
 - PostgreSQL (포트 5433)
 - Redis (포트 6380)
-- ChromaDB (포트 8000)
 
 ### 4. 데이터베이스 마이그레이션
 
@@ -83,7 +79,7 @@ npm run start:prod
 - ⚡ **Fast Path First**: Trie 기반 매칭으로 대부분의 케이스를 빠르게 처리
 - 🎯 **높은 정확도**: 부분 매칭 구분 및 회피 패턴 감지로 False Positive/False Negative 최소화
 - 🔄 **실시간 필터링**: Redis 캐싱으로 빠른 응답 속도
-- 🤖 **AI/RAG 통합**: OpenAI GPT-4o-mini + ChromaDB를 활용한 고급 분석
+- 🤖 **AI 통합**: Ollama Cloud LLM을 활용한 문맥 기반 분석
 - 🏢 **멀티 테넌트 지원**: 클라이언트별 금칙어 정책 오버라이드
 
 ---
@@ -135,7 +131,6 @@ npm run start:prod
 - **Repetition**: `시발발` (문자 반복)
 - **Jamo Separation**: `ㅅㅣ발` (자모 분리)
 - **Zero Width**: `시\u200b발` (보이지 않는 문자 삽입)
-- **Mixed Script**: `시b발` (한글/영문 혼용)
 - **Space Separation**: `시 발` (공백으로 단어 분리)
 
 ### 2. 부분 매칭 구분
@@ -191,6 +186,7 @@ curl -X POST http://localhost:3000/filter/check \
 {
   "status": "block",
   "text": "시발",
+  "isProfanity": true,
   "dictionaryScore": 0.9,
   "matchedWords": [
     {
@@ -201,7 +197,6 @@ curl -X POST http://localhost:3000/filter/check \
       "isPartialMatch": false
     }
   ],
-  "totalMatches": 1,
   "hasEvasionPattern": false,
   "suspiciousScore": 0
 }
@@ -253,10 +248,8 @@ curl -X DELETE http://localhost:3000/bad-words/{id}
 
 ### AI/ML
 
-- **LLM**: OpenAI GPT-4o-mini
-- **Embedding**: OpenAI text-embedding-3-small
-- **Vector Store**: ChromaDB
-- **RAG**: LangChain
+- **LLM**: Ollama Cloud (gpt-oss:120b) - ChatOllama 사용
+- **프롬프트 관리**: 파일 기반 프롬프트 템플릿 시스템
 
 ### Infrastructure
 
@@ -269,20 +262,20 @@ curl -X DELETE http://localhost:3000/bad-words/{id}
 ```
 filtering/
 ├── src/
-│   ├── ai/                    # AI/RAG 서비스
+│   ├── ai/                    # AI 서비스
+│   │   ├── llm.service.ts     # Ollama Cloud LLM 통합
+│   │   └── prompts/           # 프롬프트 파일
 │   ├── bad-word/              # 금칙어 관리 API
 │   ├── cache/                 # Redis 캐시 레이어
 │   ├── database/              # Prisma 데이터베이스
 │   ├── filter/                # 필터링 핵심 로직
-│   │   ├── normalization/     # 텍스트 정규화
-│   │   └── tokenization/      # 토큰화 및 후보 추출
+│   │   ├── normalization/     # 텍스트 정규화 및 회피 패턴 감지
+│   │   └── tokenization/      # 토큰화
 │   └── health/                # Health Check API
 ├── prisma/                    # 데이터베이스 스키마
 ├── docs/                      # 문서
 └── docker-compose.yml         # 인프라 설정
 ```
-
-자세한 구조는 [PROJECT.md](./PROJECT.md) 참고
 
 ---
 
@@ -382,7 +375,6 @@ npm run test:cov
 
 ### 장기 (3-6개월)
 
-- [ ] 유사 단어 검색 (Vector Store 활용)
 - [ ] 맥락 기반 필터링 강화
 - [ ] 다국어 지원
 - [ ] 관리 UI 대시보드
