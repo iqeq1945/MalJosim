@@ -1,26 +1,12 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
-import { VectorStoreService } from "./vector-store.service";
-import { EmbeddingService } from "./embedding.service";
 import { LLMService } from "./llm.service";
-import { CHROMA_CLIENT, ChromaProvider } from "./chroma.provider";
 import { OPENAI_API_KEY, OpenAIConfigProvider } from "./openai-config.provider";
+import { OLLAMA_API_KEY, OllamaApiKeyProvider } from "./ollama-config.provider";
 
 @Module({
   imports: [ConfigModule],
-  providers: [
-    ChromaProvider,
-    OpenAIConfigProvider,
-    VectorStoreService,
-    EmbeddingService,
-    LLMService,
-  ],
-  exports: [
-    CHROMA_CLIENT,
-    OPENAI_API_KEY,
-    VectorStoreService,
-    EmbeddingService,
-    LLMService,
-  ],
+  providers: [OpenAIConfigProvider, OllamaApiKeyProvider, LLMService],
+  exports: [OPENAI_API_KEY, OLLAMA_API_KEY, LLMService],
 })
 export class AIModule {}
