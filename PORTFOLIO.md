@@ -1,3 +1,63 @@
+# 말조심(MalJosim) - AI 기반 욕설 필터링 API
+
+## 프로젝트 배경
+
+실시간 웹게임 서버 운영 중, "사용자가 입력하는 텍스트를 어떻게 안전하게 관리할 것인가?"는 가장 복잡한 기술적 난제였습니다.
+
+한국어 욕설은 변형이 자유롭습니다. 기존 단순 금칙어 필터링으로는 이런 변형을 잡기 어려웠고, 사용자들이 필터를 우회하는 사례를 자주 봤습니다.
+
+"이걸 제대로 해결하는 API를 직접 만들어보면 어떨까?"
+
+이런 생각에서 시작한 프로젝트가 말조심(MalJosim)입니다.
+
+**[Github]**: https://github.com/iqeq1945/MalJosim
+
+---
+
+## 기술 스택
+
+- **Backend**: NestJS, TypeScript, Prisma
+- **Database**: PostgreSQL, Redis
+- **AI/ML**: Ollama Cloud (gpt-oss:120b), LangChain
+- **Infrastructure**: Docker, Docker Compose
+
+---
+
+## 주요 역할 및 책임
+
+### Fast Path First 전략 설계 및 구현
+
+- Trie 기반 메모리 매칭 우선 수행으로 AI 호출 감소
+- 조건부 AI 호출 로직 구현으로 평균 응답 시간 < 10ms 유지
+- 전체 단어 매칭 + 높은 심각도 시 즉시 차단으로 AI 호출 생략
+
+### 회피 패턴 감지 시스템 개발
+
+- 5가지 회피 패턴(Leetspeak, Repetition, Jamo Separation, Zero Width, Space Separation) 자동 감지 알고리즘 구현
+- 패턴별 가중치 기반 suspiciousScore 계산 시스템 설계
+- 의심스러운 텍스트 자동 식별 및 AI 문맥 판단 연동
+
+### Trie 기반 고성능 매칭 시스템 개발
+
+- 메모리 기반 Trie 데이터 구조 설계 및 구현으로 O(n) 시간 복잡도 달성
+- 네트워크 I/O 제로 달성 (메모리 직접 접근)
+- 위치 정보 기반 전체/부분 매칭 구분 로직 구현
+- 부분 매칭 가중치 50% 감소로 False Positive 방지
+
+### AI 문맥 판단 파이프라인 구축
+
+- Ollama Cloud LLM (gpt-oss:120b)을 활용한 문맥 기반 욕설 판단 시스템 설계
+- 회피 패턴 정보를 프롬프트에 포함하여 정확도 향상
+- Confidence 점수를 suspiciousScore에 반영하는 통합 로직 구현
+
+### 데이터 계층 분리 및 캐싱 전략
+
+- Write-through 캐싱 전략으로 PostgreSQL → Redis → Trie 자동 동기화
+- 서버 시작 시 스마트 로드: Redis 데이터 존재 시 Redis → Trie, 없으면 PostgreSQL → Redis + Trie
+- CacheService와 TrieService 통합으로 데이터 일관성 보장
+
+---
+
 ## 아키텍처 설계
 
 ### **필터링 파이프라인**
@@ -40,7 +100,7 @@
        │
        └──► AI Service (조건부)
             │
-            └──► OpenAI LLM (문맥 판단)
+            └──► Ollama Cloud LLM (문맥 판단)
 ```
 
 ---
@@ -244,14 +304,17 @@ Trie 기반 매칭만으로는 복잡한 회피 패턴이나 맥락을 판단하
 
 ### **1. LLM 기반 문맥 판단**
 
-OpenAI GPT-4o-mini를 사용하여 텍스트가 욕설인지 문맥 기반으로 판단합니다.
+Ollama Cloud LLM (gpt-oss:120b)을 사용하여 텍스트가 욕설인지 문맥 기반으로 판단합니다.
 
 **모델 설정**
 
 ```typescript
-this.llm = new ChatOpenAI({
-  openAIApiKey: this.apiKey,
-  modelName: "gpt-4o-mini", // 비용 효율적인 모델
+this.llm = new ChatOllama({
+  baseUrl: "https://ollama.com",
+  model: "gpt-oss:120b",
+  headers: {
+    Authorization: `Bearer ${this.apiKey}`,
+  },
   temperature: 0.1, // 일관성 있는 결과를 위해 낮은 temperature
 });
 ```
@@ -467,6 +530,7 @@ async loadTrieFromRedis(): Promise<void> {
 {
   "status": "block",
   "text": "시발",
+  "isProfanity": true,
   "dictionaryScore": 0.9,
   "matchedWords": [
     {
@@ -476,7 +540,31 @@ async loadTrieFromRedis(): Promise<void> {
       "isPartialMatch": false
     }
   ],
-  "totalMatches": 1,
+  "hasEvasionPattern": false,
+  "suspiciousScore": 0
+}
+```
+
+```json
+// 입력: "시발점" (정상 단어, AI 판단 포함)
+{
+  "status": "warning",
+  "text": "시발점",
+  "isProfanity": false,
+  "dictionaryScore": 0.325,
+  "matchedWords": [
+    {
+      "word": "시발",
+      "normalizedWord": "시발",
+      "severity": "HIGH",
+      "isPartialMatch": true
+    }
+  ],
+  "aiJudgment": {
+    "isProfanity": false,
+    "confidence": 0.1,
+    "reason": "시발점은 정상 단어입니다"
+  },
   "hasEvasionPattern": false,
   "suspiciousScore": 0
 }
@@ -514,9 +602,3 @@ async loadTrieFromRedis(): Promise<void> {
 - 금칙어 관리 웹 인터페이스
 - 필터링 통계 및 차단율 시각화
 - 클라이언트별 정책 관리 UI
-
-### **5. VectorStore 자동 동기화 (향후 확장)**
-
-- 금칙어 추가/수정 시 ChromaDB에 임베딩 벡터 자동 저장
-- 기존 금칙어 일괄 임베딩 및 VectorStore 마이그레이션 스크립트
-- VectorStore 기반 유사 단어 검색 성능 개선

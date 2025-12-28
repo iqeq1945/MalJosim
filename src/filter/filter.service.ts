@@ -44,14 +44,22 @@ export class FilterService {
     const { text } = dto;
     // clientId는 요청에는 있지만 현재는 사용하지 않음
 
+    this.logger.debug(`필터링 시작: text="${text}"`);
+
     if (!text || text.trim().length === 0) {
       const emptyAnalysis = this.normalizationService.analyze(text || "");
-      return FilterResponseDto.allow(text || "", emptyAnalysis.evasionPatterns);
+      return FilterResponseDto.allow(
+        text || "",
+        emptyAnalysis.evasionPatterns.suspiciousScore
+      );
     }
 
     // 1. 텍스트 분석 (회피 패턴 감지)
     const analysis = this.normalizationService.analyze(text);
     const suspiciousScore = analysis.evasionPatterns.suspiciousScore;
+    this.logger.debug(
+      `텍스트 분석 완료: suspiciousScore=${suspiciousScore}, evasionPatterns=${JSON.stringify(analysis.evasionPatterns.detectedPatterns)}`
+    );
 
     // 2. 텍스트 정규화 (한 번만 수행하고 재사용)
     const normalizedText = this.normalizationService.normalize(text);
@@ -63,6 +71,9 @@ export class FilterService {
     const fastMatches = this.checkDictionaryWithTrie(
       normalizedText,
       normalizedTokens
+    );
+    this.logger.debug(
+      `Fast Path 매칭 완료: 총 ${fastMatches.length}개 매칭 (전체: ${fastMatches.filter((m) => !m.isPartialMatch).length}, 부분: ${fastMatches.filter((m) => m.isPartialMatch).length})`
     );
 
     // 4. 전체 단어 매칭과 부분 매칭 분리
@@ -77,27 +88,37 @@ export class FilterService {
           text,
           fastMatches,
           fullScore,
-          suspiciousScore,
-          analysis.evasionPatterns
+          suspiciousScore
         );
       }
     }
 
     // 6. Slow Path: AI 호출 조건 체크
     const shouldCallAI =
-      suspiciousScore > 0.3 || // 회피 패턴이 있으면
+      suspiciousScore >= 0.3 || // 회피 패턴이 있으면 (0.3 이상)
       (fastMatches.length === 0 && text.length <= 20) || // 매칭 없고 짧은 텍스트면
       (partialMatches.length > 0 && fullMatches.length === 0); // 부분 매칭만 있으면 AI로 맥락 판단
 
+    this.logger.debug(
+      `AI 호출 조건 체크: shouldCallAI=${shouldCallAI}, suspiciousScore=${suspiciousScore}, fastMatches=${fastMatches.length}, partialMatches=${partialMatches.length}, textLength=${text.length}`
+    );
+
     let allMatches = [...fastMatches];
     let enhancedSuspiciousScore = suspiciousScore;
+    let aiJudgment:
+      | { isProfanity: boolean; confidence: number; reason?: string }
+      | undefined;
 
-    if (shouldCallAI && this.llmService) {
+    if (shouldCallAI && this.llmService?.isAvailable()) {
+      this.logger.log(`AI 호출 시작: text="${analysis.original}"`);
       try {
         // AI가 문맥 기반으로 욕설 여부 판단
-        const aiJudgment = await this.llmService.judgeProfanity(
+        aiJudgment = await this.llmService.judgeProfanity(
           analysis.original,
           analysis.evasionPatterns
+        );
+        this.logger.log(
+          `AI 호출 완료: isProfanity=${aiJudgment.isProfanity}, confidence=${aiJudgment.confidence}`
         );
 
         if (aiJudgment.isProfanity) {
@@ -113,10 +134,14 @@ export class FilterService {
       } catch (error) {
         // AI 실패 시 Fast Path 결과만 사용
         this.logger.warn(
-          "AI judgment failed, using Fast Path result only:",
-          error
+          `AI judgment failed, using Fast Path result only: ${error.message || error}`,
+          error.stack
         );
       }
+    } else if (shouldCallAI && !this.llmService?.isAvailable()) {
+      this.logger.debug(
+        "AI 호출 조건 충족했으나 LLM 서비스 사용 불가 (API 키 미설정 또는 프롬프트 미로드)"
+      );
     }
 
     // 7. 점수 계산 및 최종 판정
@@ -124,6 +149,9 @@ export class FilterService {
     const status = this.determineStatus(
       dictionaryScore,
       enhancedSuspiciousScore
+    );
+    this.logger.debug(
+      `최종 판정: status=${status}, dictionaryScore=${dictionaryScore}, enhancedSuspiciousScore=${enhancedSuspiciousScore}`
     );
 
     // 8. 결과 반환
@@ -133,7 +161,7 @@ export class FilterService {
       allMatches,
       dictionaryScore,
       enhancedSuspiciousScore,
-      analysis.evasionPatterns
+      aiJudgment
     );
   }
 
@@ -145,7 +173,7 @@ export class FilterService {
    * @param matchedWords 매칭된 금칙어 목록
    * @param dictionaryScore 사전 기반 점수
    * @param suspiciousScore 의심도 점수
-   * @param evasionPatterns 회피 패턴 정보
+   * @param aiJudgment AI 판단 결과 (선택적)
    * @returns 필터링 결과 DTO
    */
   private createResponse(
@@ -154,18 +182,18 @@ export class FilterService {
     matchedWords: MatchedBadWord[],
     dictionaryScore: number,
     suspiciousScore: number,
-    evasionPatterns?: EvasionPattern
+    aiJudgment?: { isProfanity: boolean; confidence: number; reason?: string }
   ): FilterResponseDto {
     switch (status) {
       case "allow":
-        return FilterResponseDto.allow(text, evasionPatterns);
+        return FilterResponseDto.allow(text, suspiciousScore, aiJudgment);
       case "warning":
         return FilterResponseDto.warning(
           text,
           matchedWords,
           dictionaryScore,
           suspiciousScore,
-          evasionPatterns
+          aiJudgment
         );
       case "block":
         return FilterResponseDto.block(
@@ -173,7 +201,7 @@ export class FilterService {
           matchedWords,
           dictionaryScore,
           suspiciousScore,
-          evasionPatterns
+          aiJudgment
         );
     }
   }

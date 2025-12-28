@@ -1,27 +1,99 @@
-import { Injectable, Logger, Inject } from "@nestjs/common";
-import { ChatOpenAI } from "@langchain/openai";
+import { Injectable, Logger, Inject, OnModuleInit } from "@nestjs/common";
+import { ChatOllama } from "@langchain/ollama";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-import { OPENAI_API_KEY } from "./openai-config.provider";
+import { OLLAMA_API_KEY } from "./ollama-config.provider";
+import { readFile } from "fs/promises";
+import { join } from "path";
 
 /**
  * LLM 서비스
  *
- * OpenAI LLM을 사용하여 텍스트를 문맥 기반으로 분석하여 욕설 여부를 판단합니다.
+ * Ollama Cloud LLM을 사용하여 텍스트를 문맥 기반으로 분석하여 욕설 여부를 판단합니다.
  */
 @Injectable()
-export class LLMService {
+export class LLMService implements OnModuleInit {
   private readonly logger = new Logger(LLMService.name);
-  private llm: ChatOpenAI;
+  private llm: ChatOllama;
+  private systemPrompt: string | null = null;
+  private userPromptTemplate: string | null = null;
 
-  constructor(@Inject(OPENAI_API_KEY) private readonly apiKey: string) {
+  // Ollama Cloud 설정 (고정값)
+  private readonly baseUrl = "https://ollama.com";
+  private readonly modelName = "gpt-oss:120b";
+
+  private readonly promptsDir = (() => {
+    // __dirname은 컴파일된 파일의 위치를 가리킴
+
+    const fs = require("fs");
+    const path = require("path");
+
+    // 소스 경로 (개발 모드용)
+    const srcPath = path.join(process.cwd(), "src", "ai", "prompts");
+
+    // dist 경로 (프로덕션용)
+    const distPath = join(__dirname, "prompts");
+
+    // 소스 경로가 있으면 항상 우선 사용 (개발 모드에서 안정적)
+    // 없으면 dist 경로 사용 (프로덕션)
+    if (fs.existsSync(srcPath)) {
+      return srcPath;
+    } else if (fs.existsSync(distPath)) {
+      return distPath;
+    }
+
+    return distPath;
+  })();
+
+  constructor(@Inject(OLLAMA_API_KEY) private readonly apiKey: string) {
     if (!this.apiKey) {
-      this.logger.warn("OPENAI_API_KEY not found. LLMService will not work.");
+      this.logger.warn("OLLAMA_API_KEY not found. LLMService will not work.");
     } else {
-      this.llm = new ChatOpenAI({
-        openAIApiKey: this.apiKey,
-        modelName: "gpt-4o-mini", // 비용 효율적인 모델
+      this.llm = new ChatOllama({
+        baseUrl: this.baseUrl,
+        model: this.modelName,
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+        },
         temperature: 0.1, // 일관성 있는 결과를 위해 낮은 temperature
       });
+      this.logger.log(
+        `Ollama Cloud LLM initialized with model: ${this.modelName}, baseURL: ${this.baseUrl}`
+      );
+    }
+  }
+
+  /**
+   * 모듈 초기화 시 프롬프트 파일을 로드합니다.
+   */
+  async onModuleInit(): Promise<void> {
+    await this.loadPrompts();
+  }
+
+  /**
+   * 프롬프트 파일을 로드합니다.
+   * 파일이 없으면 에러를 발생시킵니다.
+   */
+  private async loadPrompts(): Promise<void> {
+    try {
+      this.systemPrompt = await readFile(
+        join(this.promptsDir, "profanity-detection.system.txt"),
+        "utf-8"
+      );
+      this.userPromptTemplate = await readFile(
+        join(this.promptsDir, "profanity-detection.user.txt"),
+        "utf-8"
+      );
+
+      if (!this.systemPrompt || !this.userPromptTemplate) {
+        throw new Error("Prompt files are empty");
+      }
+
+      this.logger.log("Prompts loaded successfully");
+    } catch (error) {
+      this.logger.error("Failed to load prompts:", error);
+      throw new Error(
+        `프롬프트 파일을 로드할 수 없습니다. ${this.promptsDir} 디렉토리에 profanity-detection.system.txt와 profanity-detection.user.txt 파일이 필요합니다.`
+      );
     }
   }
 
@@ -32,6 +104,13 @@ export class LLMService {
    * @param evasionPatterns 회피 패턴 정보 (선택적)
    * @returns 욕설 판단 결과
    */
+  /**
+   * LLM 서비스가 사용 가능한지 확인합니다.
+   */
+  isAvailable(): boolean {
+    return !!this.llm && !!this.systemPrompt && !!this.userPromptTemplate;
+  }
+
   async judgeProfanity(
     text: string,
     evasionPatterns?: {
@@ -47,55 +126,102 @@ export class LLMService {
     confidence: number; // 0-1
     reason?: string;
   }> {
-    if (!this.llm) {
-      throw new Error("OpenAI API key not configured");
+    this.logger.debug(`judgeProfanity 호출: text="${text}"`);
+
+    if (!this.isAvailable()) {
+      this.logger.error(
+        `LLM 서비스 사용 불가: systemPrompt=${!!this.systemPrompt}, userPromptTemplate=${!!this.userPromptTemplate}, apiKey=${this.apiKey ? "설정됨" : "미설정"}`
+      );
+      throw new Error("Ollama API key not configured or prompts not loaded");
     }
 
+    // 프롬프트 파일이 없으면 에러 발생
+    if (!this.systemPrompt || !this.userPromptTemplate) {
+      throw new Error(
+        "프롬프트 파일이 로드되지 않았습니다. 프롬프트 파일이 존재하는지 확인하세요."
+      );
+    }
+
+    this.logger.debug("LLM API 호출 시작");
     try {
-      const systemPrompt = `당신은 한국어 욕설을 감지하는 전문가입니다.
-주어진 텍스트를 문맥을 고려하여 욕설인지 판단하세요.
-
-주의사항:
-1. 문맥을 고려하여 판단하세요 (예: "시발점"은 정상 단어, "시발"은 욕설)
-2. 회피 패턴(leetspeak, 자모 분리 등)을 고려하세요
-3. 정상적인 단어는 욕설이 아닙니다
-4. 확신도(confidence)를 0-1 사이로 제공하세요
-
-응답 형식: JSON
-{
-  "isProfanity": boolean,
-  "confidence": number (0-1),
-  "reason": string (선택적, 판단 이유)
-}`;
-
-      let userPrompt = `다음 텍스트가 욕설인지 문맥을 고려하여 판단하세요:\n\n${text}`;
-
+      // 회피 패턴 정보 구성
+      let evasionPatternsText = "";
       if (evasionPatterns && evasionPatterns.suspiciousScore > 0) {
-        userPrompt += `\n\n회피 패턴 정보:\n`;
+        evasionPatternsText = "\n\n회피 패턴 정보:\n";
         if (evasionPatterns.hasLeetspeak) {
-          userPrompt += "- 숫자/영문/특수문자 혼용 감지\n";
+          evasionPatternsText += "- 숫자/영문/특수문자 혼용 감지\n";
         }
         if (evasionPatterns.hasRepetition) {
-          userPrompt += "- 반복 문자 감지\n";
+          evasionPatternsText += "- 반복 문자 감지\n";
         }
         if (evasionPatterns.hasJamoSeparation) {
-          userPrompt += "- 자모 분리 감지\n";
+          evasionPatternsText += "- 자모 분리 감지\n";
         }
         if (evasionPatterns.hasZeroWidth) {
-          userPrompt += "- Zero-width 문자 감지\n";
+          evasionPatternsText += "- Zero-width 문자 감지\n";
         }
         if (evasionPatterns.hasSpaceSeparation) {
-          userPrompt += "- 공백 분리 감지\n";
+          evasionPatternsText += "- 공백 분리 감지\n";
         }
       }
 
+      // 사용자 프롬프트 템플릿 치환
+      const userPrompt = this.userPromptTemplate
+        .replace("{{TEXT}}", text)
+        .replace("{{EVASION_PATTERNS}}", evasionPatternsText)
+        .replace(/\n{3,}/g, "\n\n") // 연속된 빈 줄 정리
+        .trim();
+
+      // LangChain 메시지 형식으로 구성
       const messages = [
-        new SystemMessage(systemPrompt),
+        new SystemMessage(this.systemPrompt),
         new HumanMessage(userPrompt),
       ];
 
-      const response = await this.llm.invoke(messages);
+      // 타임아웃 설정 (30초)
+      const timeoutMs = 30000;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(
+          () => reject(new Error("LLM API 호출 타임아웃 (30초)")),
+          timeoutMs
+        );
+      });
+
+      this.logger.debug(
+        `LLM API 요청 전송: baseURL=${this.baseUrl}, model=${this.modelName}, apiKey=${this.apiKey ? `${this.apiKey.substring(0, 8)}...` : "없음"}`
+      );
+
+      let response;
+      try {
+        const startTime = Date.now();
+        response = await Promise.race([
+          this.llm.invoke(messages),
+          timeoutPromise,
+        ]);
+        const duration = Date.now() - startTime;
+        this.logger.debug(`LLM API 응답 수신 완료 (소요 시간: ${duration}ms)`);
+      } catch (invokeError) {
+        const errorMessage = invokeError.message || String(invokeError);
+        this.logger.error(
+          `LLM API 호출 실패: ${errorMessage}`,
+          invokeError.stack
+        );
+
+        // 네트워크 에러나 타임아웃인 경우 추가 정보 로깅
+        if (
+          errorMessage.includes("타임아웃") ||
+          errorMessage.includes("timeout")
+        ) {
+          this.logger.error(
+            `타임아웃 원인 가능성: 1) API 키 유효하지 않음 2) 네트워크 문제 3) Ollama Cloud 서버 응답 지연`
+          );
+        }
+
+        throw invokeError;
+      }
+
       const content = response.content as string;
+      this.logger.debug(`LLM 응답 내용: ${content.substring(0, 200)}...`);
 
       // JSON 파싱
       try {
@@ -119,7 +245,10 @@ export class LLMService {
         };
       }
     } catch (error) {
-      this.logger.error("Failed to judge profanity:", error);
+      this.logger.error(
+        `Failed to judge profanity: ${error.message || error}`,
+        error.stack
+      );
       throw error;
     }
   }

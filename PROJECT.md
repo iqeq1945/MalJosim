@@ -9,7 +9,7 @@
 - 🚀 **Fast Path First 전략**: 95-98% AI 호출 감소로 비용 최적화
 - 🎯 **높은 정확도**: 부분 매칭, 회피 패턴 감지로 False Positive/False Negative 최소화
 - 🔄 **실시간 필터링**: Redis 캐싱으로 빠른 응답 속도
-- 🤖 **AI/RAG 통합**: OpenAI GPT-4o-mini + ChromaDB를 활용한 고급 분석
+- 🤖 **AI 통합**: Ollama Cloud LLM을 활용한 문맥 기반 분석
 - 🏢 **멀티 테넌트 지원**: 클라이언트별 금칙어 정책 오버라이드
 
 ---
@@ -22,13 +22,11 @@
 - **Language**: TypeScript 5.x
 - **Database**: PostgreSQL 16 (Prisma ORM)
 - **Cache**: Redis 7
-- **Vector Store**: ChromaDB
 
 ### AI/ML
 
-- **LLM**: OpenAI GPT-4o-mini
-- **Embedding**: OpenAI text-embedding-3-small
-- **RAG**: LangChain + ChromaDB
+- **LLM**: Ollama Cloud (gpt-oss:120b) - ChatOllama 사용
+- **프롬프트 관리**: 파일 기반 프롬프트 템플릿 시스템
 
 ### Infrastructure
 
@@ -42,13 +40,13 @@
 ```
 filtering/
 ├── src/
-│   ├── ai/                    # AI/RAG 서비스
+│   ├── ai/                    # AI 서비스
 │   │   ├── ai.module.ts
-│   │   ├── llm.service.ts      # OpenAI LLM 통합
-│   │   ├── embedding.service.ts # Embedding 생성
-│   │   ├── rag.service.ts      # RAG 파이프라인
-│   │   ├── vector-store.service.ts # ChromaDB 통합
-│   │   └── chroma.provider.ts
+│   │   ├── llm.service.ts      # Ollama Cloud LLM 통합
+│   │   ├── ollama-config.provider.ts # Ollama 설정
+│   │   └── prompts/            # 프롬프트 파일
+│   │       ├── profanity-detection.system.txt
+│   │       └── profanity-detection.user.txt
 │   │
 │   ├── bad-word/              # 금칙어 관리 API
 │   │   ├── bad-word.controller.ts
@@ -199,20 +197,21 @@ filtering/
 - **부분 매칭**: 매칭된 단어가 토큰의 일부인 경우 (예: "시발점" → "시발")
 - 부분 매칭은 가중치 50% 감소
 
-### 4. AI/RAG 파이프라인
+### 4. AI 기반 문맥 분석
 
-**RAGService**:
+**LLMService**:
 
-- **extractCandidates()**: LLM을 통해 맥락 기반 후보 추출
+- **judgeProfanity()**: Ollama Cloud LLM을 사용하여 문맥 기반 욕설 판단
 - **프로세스**:
-  1. 입력 텍스트를 LLM에 전달
-  2. LLM이 의심스러운 단어/구문 추출
-  3. 추출된 후보를 정규화
-  4. Trie에서 매칭 확인
+  1. 회피 패턴 정보와 함께 원본 텍스트를 LLM에 전달
+  2. LLM이 문맥을 고려하여 욕설 여부 판단
+  3. JSON 형식으로 응답 (isProfanity, confidence, reason)
 
-**Vector Store (ChromaDB)**:
+**프롬프트 관리**:
 
-- 향후 유사 단어 검색 및 확장 기능용
+- **파일 기반 프롬프트**: 코드와 분리된 프롬프트 템플릿 시스템
+- **템플릿 변수**: `{{TEXT}}`, `{{EVASION_PATTERNS}}` 자동 치환
+- **필수 검증**: 프롬프트 파일이 없으면 서비스 시작 불가
 
 ### 5. 멀티 테넌트 지원
 
@@ -272,10 +271,10 @@ filtering/
 
 ```json
 {
-  "status": "BLOCK",
+  "status": "block",
   "text": "시발 개새끼",
+  "isProfanity": true,
   "dictionaryScore": 0.85,
-  "suspiciousScore": 0.0,
   "matchedWords": [
     {
       "word": "시발",
@@ -284,15 +283,17 @@ filtering/
       "category": "PROFANITY",
       "isPartialMatch": false
     }
-  ]
+  ],
+  "hasEvasionPattern": false,
+  "suspiciousScore": 0.0
 }
 ```
 
 **Status 값**:
 
-- `ALLOW`: 허용
-- `WARN`: 경고 (낮은 심각도)
-- `BLOCK`: 차단
+- `allow`: 허용
+- `warning`: 경고 (낮은 심각도)
+- `block`: 차단
 
 ### 금칙어 관리 API
 
@@ -340,11 +341,8 @@ REDIS_HOST=localhost
 REDIS_PORT=6380
 REDIS_PASSWORD=  # 비어있으면 비밀번호 없이 실행, 설정하면 해당 비밀번호 사용
 
-# OpenAI
-OPENAI_API_KEY=your-openai-api-key
-
-# ChromaDB
-CHROMA_URL=http://localhost:8000
+# Ollama Cloud
+OLLAMA_API_KEY=your-ollama-api-key
 ```
 
 ---
@@ -367,7 +365,6 @@ docker-compose up -d
 
 - PostgreSQL (포트 5433)
 - Redis (포트 6380)
-- ChromaDB (포트 8000)
 
 ### 3. 데이터베이스 마이그레이션
 
@@ -394,6 +391,41 @@ npm run prisma:studio
 ```
 
 ---
+
+## 📝 최근 변경 사항 (2025년 1월)
+
+### 주요 변경 사항
+
+1. **LLM 서비스 변경**
+   - OpenAI GPT-4o-mini → Ollama Cloud (gpt-oss:120b)
+   - ChatOllama 사용 (LangChain)
+   - Ollama Cloud API 통합
+   - 환경 변수: `OLLAMA_API_KEY` 추가
+
+2. **프롬프트 관리 시스템 도입**
+   - 프롬프트를 코드에서 분리하여 별도 파일로 관리
+   - `src/ai/prompts/` 디렉토리에 프롬프트 파일 저장
+     - `profanity-detection.system.txt`: 시스템 프롬프트
+     - `profanity-detection.user.txt`: 사용자 프롬프트 템플릿
+   - 템플릿 변수 지원: `{{TEXT}}`, `{{EVASION_PATTERNS}}`
+   - 프롬프트 파일 필수 검증: 파일이 없으면 서비스 시작 불가
+
+3. **ChromaDB 및 Embedding 시스템 제거**
+   - Vector Store 및 RAG 기능 제거
+   - Embedding Service 제거
+   - ChromaDB 관련 코드 및 의존성 제거
+   - Docker Compose에서 ChromaDB 서비스 제거
+   - AI 기반 문맥 분석만 사용
+
+4. **회피 패턴 감지 기능**
+   - 5가지 회피 패턴 자동 감지:
+     - **Leetspeak**: 한글 + 숫자/영문/특수문자 혼용 (예: `시8`, `cibal`)
+     - **Repetition**: 같은 문자 2회 이상 연속 반복 (예: `시발발`)
+     - **Jamo Separation**: 자모 분리 (예: `ㅅㅣ발`)
+     - **Zero Width**: Zero-width 문자 삽입 (예: `시\u200b발`)
+     - **Space Separation**: 공백으로 단어 분리 (예: `시 발`)
+   - 패턴별 가중치를 합산하여 `suspiciousScore` (0-1) 계산
+   - 회피 패턴 정보를 LLM에 전달하여 문맥 기반 판단
 
 ## 📈 진행 상황
 
@@ -439,11 +471,11 @@ npm run prisma:studio
   - AI 호출 조건부 실행
   - dictionaryScore 계산
 
-- [x] **AI/RAG 파이프라인**
-  - OpenAI LLM 통합
-  - Embedding 서비스
-  - ChromaDB Vector Store 통합
-  - RAG 서비스 (후보 추출)
+- [x] **AI 기반 문맥 분석**
+  - Ollama Cloud LLM 통합 (gpt-oss:120b) - ChatOllama 사용
+  - 프롬프트 파일 기반 관리 시스템
+  - 회피 패턴 정보를 포함한 문맥 기반 판단
+  - AI 판단 결과를 응답에 포함 (`isProfanity`, `aiJudgment`)
 
 - [x] **코드 리팩토링**
   - 중복 코드 제거
@@ -513,7 +545,6 @@ npm run prisma:studio
 ### 장기 (3-6개월)
 
 1. 고급 기능
-   - 유사 단어 검색 (Vector Store 활용)
    - 맥락 기반 필터링 강화
    - 다국어 지원
 2. 관리 UI
@@ -550,6 +581,15 @@ npm run prisma:studio
 **이유**: SaaS 환경에서 클라이언트별 정책 필요
 **구현**: ClientBadWord 테이블로 오버라이드
 
+### 6. 파일 기반 프롬프트 관리
+
+**이유**: 프롬프트 수정 시 코드 변경 없이 업데이트 가능, 버전 관리 용이
+**구현**:
+
+- `src/ai/prompts/` 디렉토리에 텍스트 파일로 저장
+- 템플릿 변수 (`{{TEXT}}`, `{{EVASION_PATTERNS}}`) 자동 치환
+- 서비스 시작 시 프롬프트 파일 필수 검증
+
 ---
 
 ## 🐛 알려진 이슈
@@ -566,7 +606,7 @@ npm run prisma:studio
 - [데이터베이스 스키마 문서](./docs/rdb-schema.md)
 - [Prisma 공식 문서](https://www.prisma.io/docs)
 - [NestJS 공식 문서](https://docs.nestjs.com)
-- [OpenAI API 문서](https://platform.openai.com/docs)
+- [Ollama Cloud 문서](https://ollama.com)
 
 ---
 
@@ -582,4 +622,4 @@ MIT License
 
 ---
 
-**마지막 업데이트**: 2025년 11월
+**마지막 업데이트**: 2025년 1월
